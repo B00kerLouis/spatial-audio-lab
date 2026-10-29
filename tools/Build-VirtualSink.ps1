@@ -9,7 +9,9 @@ $sampleRoot = Join-Path $repoRoot 'driver\windows-driver-samples'
 [xml]$packages = Get-Content (Join-Path $sampleRoot 'packages.config')
 @($packages.packages.package) | Where-Object { $_.id -match '(?i)arm64' } |
     ForEach-Object { [void]$packages.packages.RemoveChild($_) }
-$restoreFile = Join-Path $sampleRoot 'packages-x64.config'
+$restoreRoot = Join-Path $repoRoot 'build-driver-restore'
+New-Item $restoreRoot -ItemType Directory -Force | Out-Null
+$restoreFile = Join-Path $restoreRoot 'packages.config'
 $packages.Save($restoreFile)
 & nuget restore $restoreFile -PackagesDirectory (Join-Path $sampleRoot 'packages') -NonInteractive
 if ($LASTEXITCODE -ne 0) { throw 'WDK NuGet restore failed.' }
