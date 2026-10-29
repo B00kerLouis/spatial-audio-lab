@@ -9,7 +9,7 @@ internal static class ProcessRunner {
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         using Process process = Process.Start(start) ?? throw new InvalidOperationException(
-            $"Failed to start {executable}");
+            $"启动失败： {executable}");
         Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
         Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
         await WaitAsync(process, cancellationToken);

@@ -1,10 +1,10 @@
 <Window x:Class="SpeakerLayoutEditor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SpatialAudioLab Studio" Width="1440" Height="760"
+        Title="SpatialAudioLab Studio · 空间音频工作室" Width="1440" Height="760"
         WindowStartupLocation="CenterScreen"
         MinWidth="1180" MinHeight="640" Background="#F3F5F6"
-        FontFamily="Segoe UI" FontSize="13">
+        FontFamily="Microsoft YaHei UI" FontSize="13">
   <Window.Resources>
     <Style x:Key="IconButton" TargetType="Button">
       <Setter Property="Width" Value="36" />
@@ -72,11 +72,11 @@
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <Button Grid.Column="0" Style="{StaticResource IconButton}" Content="&#xE8E5;"
-                ToolTip="Abrir perfil" Click="OpenClick" />
+                ToolTip="打开配置" Click="OpenClick" />
         <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE74E;"
-                ToolTip="Guardar perfil" Click="SaveClick" />
+                ToolTip="保存配置" Click="SaveClick" />
         <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE792;"
-                ToolTip="Guardar como" Click="SaveAsClick" />
+                ToolTip="另存为" Click="SaveAsClick" />
         <TextBlock Grid.Column="4" x:Name="PathText" Foreground="#DCE1E4"
                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
         <TextBlock Grid.Column="5" Text="7.1.4" Foreground="#9FD4B2" FontWeight="SemiBold"
@@ -87,7 +87,7 @@
     <Border DockPanel.Dock="Bottom" Height="30" Background="#E2E6E8"
             BorderBrush="#C7CDD1" BorderThickness="0,1,0,0">
       <TextBlock x:Name="StatusText" Margin="12,0" VerticalAlignment="Center"
-                 Text="Listo" />
+                 Text="就绪" />
     </Border>
 
     <Grid>
@@ -100,11 +100,11 @@
       <Border Grid.Column="0" Background="#E9EDEF" BorderBrush="#C9CFD3"
               BorderThickness="0,0,1,0">
         <DockPanel Margin="12">
-          <TextBlock DockPanel.Dock="Top" Text="PARLANTES" FontSize="11"
+          <TextBlock DockPanel.Dock="Top" Text="扬声器" FontSize="11"
                      Foreground="#596168" FontWeight="SemiBold" Margin="4,4,0,8" />
           <ListBox x:Name="SpeakerList" BorderThickness="0" Background="Transparent"
                    SelectionChanged="SpeakerSelectionChanged"
-                   DisplayMemberPath="Name" />
+                   DisplayMemberPath="DisplayName" />
         </DockPanel>
       </Border>
 
@@ -135,7 +135,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
-          <TextBlock Text="ELEVACION" FontSize="11" Foreground="#596168"
+          <TextBlock Text="仰角" FontSize="11" Foreground="#596168"
                      FontWeight="SemiBold" Margin="4,0,0,6" />
           <Border Grid.Row="1" Background="White" BorderBrush="#C9CFD3" BorderThickness="1">
             <Canvas x:Name="ElevationCanvas" ClipToBounds="True"
@@ -149,7 +149,7 @@
       <Border Grid.Column="2" Background="#FAFBFB" BorderBrush="#C9CFD3"
               BorderThickness="1,0,0,0">
         <TabControl Background="Transparent" BorderThickness="0" Margin="12">
-          <TabItem Header="Parlante">
+          <TabItem Header="扬声器">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="6,16,6,6">
                 <TextBlock x:Name="SelectedNameText" FontSize="18" FontWeight="SemiBold"
@@ -159,7 +159,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="70" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="Azimut" />
+                  <TextBlock Text="方位角" />
                   <TextBlock Grid.Column="1" x:Name="AzimuthValue" TextAlignment="Right" />
                 </Grid>
                 <Slider x:Name="AzimuthSlider" Minimum="-180" Maximum="180"
@@ -169,7 +169,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="70" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="Elevacion" />
+                  <TextBlock Text="仰角" />
                   <TextBlock Grid.Column="1" x:Name="ElevationValue" TextAlignment="Right" />
                 </Grid>
                 <Slider x:Name="ElevationSlider" Minimum="-30" Maximum="90"
@@ -179,40 +179,40 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="70" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="Nivel" />
+                  <TextBlock Text="电平" />
                   <TextBlock Grid.Column="1" x:Name="TrimValue" TextAlignment="Right" />
                 </Grid>
                 <Slider x:Name="TrimSlider" Minimum="-24" Maximum="12"
                         ValueChanged="SpeakerControlChanged" />
-                <TextBlock Text="Destino fisico" Margin="0,4,0,6" />
+                <TextBlock Text="物理输出" Margin="0,4,0,6" />
                 <ComboBox x:Name="PhysicalDestinationCombo" DisplayMemberPath="DisplayName"
                           SelectionChanged="PhysicalDestinationSelectionChanged" Height="30"
-                          ToolTip="Endpoint y canal fisico que reproducen este parlante" />
+                          ToolTip="此扬声器对应的设备与物理声道" />
                 <TextBlock x:Name="DestinationEndpointText" Margin="2,5,2,0"
                            Foreground="#596168" TextWrapping="Wrap"
                            ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
                 <Button Height="36" Margin="0,14,0,0" Click="ResetPositionsClick"
-                        ToolTip="Restablece el azimut y la elevacion de todos los parlantes">
+                        ToolTip="恢复全部扬声器的默认方位角与仰角">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE777;"
                                FontSize="15" Margin="0,0,8,0" />
-                    <TextBlock Text="Restablecer posiciones" />
+                    <TextBlock Text="恢复默认位置" />
                   </StackPanel>
                 </Button>
-                <TextBlock Text="Ganancia de prueba" Margin="0,14,0,2" />
+                <TextBlock Text="测音增益" Margin="0,14,0,2" />
                 <Slider x:Name="TestGainSlider" Minimum="0" Maximum="0.25" Value="0.08" />
                 <Button Height="38" Margin="0,10,0,0" Click="TestSpeakerClick"
                         HorizontalContentAlignment="Center">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE768;"
                                FontSize="16" Margin="0,0,8,0" />
-                    <TextBlock Text="Probar parlante" />
+                    <TextBlock Text="测试扬声器" />
                   </StackPanel>
                 </Button>
               </StackPanel>
             </ScrollViewer>
           </TabItem>
-          <TabItem Header="Salidas">
+          <TabItem Header="输出">
             <Grid Margin="4,12,4,4">
               <Grid.RowDefinitions>
                 <RowDefinition Height="34" />
@@ -224,20 +224,20 @@
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="ENDPOINTS ACTIVOS" FontSize="11" Foreground="#596168"
+                <TextBlock Text="可用音频设备" FontSize="11" Foreground="#596168"
                            FontWeight="SemiBold" VerticalAlignment="Center" />
                 <Button Grid.Column="1" x:Name="RefreshEndpointsButton" Width="30" Height="28"
                         FontFamily="Segoe Fluent Icons" FontSize="14" Content="&#xE72C;"
-                        ToolTip="Actualizar endpoints" Click="RefreshEndpointsClick" />
+                        ToolTip="刷新设备" Click="RefreshEndpointsClick" />
               </Grid>
               <DataGrid Grid.Row="1" x:Name="OutputGrid" AutoGenerateColumns="False"
                         CanUserAddRows="False" CanUserDeleteRows="False"
                         HeadersVisibility="Column" RowHeaderWidth="0" RowHeight="38"
                         ColumnHeaderHeight="30" GridLinesVisibility="Horizontal">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="Ruta" Binding="{Binding Name}" IsReadOnly="True"
+                  <DataGridTextColumn Header="路由" Binding="{Binding Name}" IsReadOnly="True"
                                       Width="78" />
-                  <DataGridTemplateColumn Header="Endpoint" Width="*">
+                  <DataGridTemplateColumn Header="设备" Width="*">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate>
                         <ComboBox ItemsSource="{Binding EndpointChoices,
@@ -252,7 +252,7 @@
                   </DataGridTemplateColumn>
                   <DataGridTextColumn Header="ms" Binding="{Binding DelayMilliseconds}"
                                       Width="48" />
-                  <DataGridTemplateColumn Header="Mapeo" Width="118" IsReadOnly="True">
+                  <DataGridTemplateColumn Header="声道映射" Width="118" IsReadOnly="True">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate>
                         <TextBlock Text="{Binding ChannelMapText}" ToolTip="{Binding ChannelMapText}"
@@ -263,23 +263,23 @@
                 </DataGrid.Columns>
               </DataGrid>
               <StackPanel Grid.Row="2" Margin="0,12,0,0">
-                <TextBlock Text="ASIO (un dispositivo para todos los parlantes)" FontWeight="SemiBold" />
+                <TextBlock Text="ASIO（全部扬声器使用同一设备）" FontWeight="SemiBold" />
                 <DockPanel Margin="0,6,0,0">
-                  <Button DockPanel.Dock="Right" Content="Actualizar ASIO" Click="RefreshAsioClick" Margin="6,0,0,0" />
+                  <Button DockPanel.Dock="Right" Content="刷新 ASIO" Click="RefreshAsioClick" Margin="6,0,0,0" />
                   <ComboBox x:Name="AsioDriverCombo" DisplayMemberPath="Name" MinWidth="140" />
                 </DockPanel>
-                <TextBlock Text="Canales fisicos (desde 1, separados por comas)" Margin="0,6,0,2" />
-                <TextBox x:Name="AsioChannelsText" ToolTip="Vacio: canales consecutivos 1..N" />
+                <TextBlock Text="物理声道（从 1 开始，以逗号分隔）" Margin="0,6,0,2" />
+                <TextBox x:Name="AsioChannelsText" ToolTip="留空则使用连续声道 1..N" />
                 <DockPanel Margin="0,6,0,0">
-                  <Button DockPanel.Dock="Right" x:Name="ApplyAsioButton" Content="Usar / aplicar ASIO" Click="ApplyAsioClick" Margin="6,0,0,0" />
-                  <TextBlock Text="Buffer (0 = preferido): " VerticalAlignment="Center" />
+                  <Button DockPanel.Dock="Right" x:Name="ApplyAsioButton" Content="应用 ASIO" Click="ApplyAsioClick" Margin="6,0,0,0" />
+                  <TextBlock Text="缓冲帧数（0＝驱动首选）：" VerticalAlignment="Center" />
                   <TextBox x:Name="AsioBufferText" Text="0" MinWidth="50" />
                 </DockPanel>
-                <TextBlock x:Name="AsioStatusText" Text="Actualizar ASIO para buscar drivers x64 instalados." TextWrapping="Wrap" Margin="0,6,0,0" />
+                <TextBlock x:Name="AsioStatusText" Text="刷新以查找已安装的 64 位 ASIO 驱动。" TextWrapping="Wrap" Margin="0,6,0,0" />
               </StackPanel>
             </Grid>
           </TabItem>
-          <TabItem Header="Puentes">
+          <TabItem Header="实时桥接">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="8,18,8,8">
                 <Grid Margin="0,0,0,18">
@@ -294,20 +294,20 @@
                     <RowDefinition Height="34" />
                   </Grid.RowDefinitions>
                   <RadioButton x:Name="MatModeButton" Style="{StaticResource SegmentButton}"
-                               GroupName="BridgeMode" IsChecked="True" Content="Atmos (Windows)"
+                               GroupName="BridgeMode" IsChecked="True" Content="杜比全景声（Windows）"
                                Click="BridgeModeClick"
-                               ToolTip="Dolby Atmos mediante Windows Spatial Audio" />
+                               ToolTip="通过 Windows 空间音效接收杜比全景声" />
                   <RadioButton Grid.Column="2" x:Name="DtsXModeButton"
                                Style="{StaticResource SegmentButton}" GroupName="BridgeMode"
                                Content="DTS:X" Click="BridgeModeClick" />
                   <RadioButton Grid.Row="2" x:Name="NativeMatModeButton"
                                Style="{StaticResource SegmentButton}" GroupName="BridgeMode"
-                               Content="MAT nativo (BF1)" Click="BridgeModeClick"
-                               ToolTip="Carrier MAT directo con Windows Spatial Audio desactivado" />
+                               Content="原生 MAT（BF1）" Click="BridgeModeClick"
+                               ToolTip="关闭 Windows 空间音效，直接接收 MAT 载波" />
                   <RadioButton Grid.Row="2" Grid.Column="2" x:Name="PcmModeButton"
                                Style="{StaticResource SegmentButton}" GroupName="BridgeMode"
                                Content="PCM 7.1.4" Click="BridgeModeClick"
-                               ToolTip="Renderer propio sin codificador Dolby o DTS" />
+                               ToolTip="原生 PCM 渲染，无需 Dolby / DTS 编码器" />
                 </Grid>
 
                 <Grid Margin="0,0,0,22">
@@ -318,11 +318,11 @@
                   <Ellipse x:Name="BridgeStatusDot" Width="10" Height="10"
                            Fill="#8B949A" HorizontalAlignment="Left"
                            VerticalAlignment="Center" />
-                  <TextBlock Grid.Column="1" x:Name="BridgeStatusText" Text="Comprobando..."
+                  <TextBlock Grid.Column="1" x:Name="BridgeStatusText" Text="正在检查…"
                              FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </Grid>
 
-                <TextBlock Text="LATENCIA" FontSize="11" FontWeight="SemiBold"
+                <TextBlock Text="延迟模式" FontSize="11" FontWeight="SemiBold"
                            Foreground="#59636A" Margin="0,0,0,8" />
                 <Grid Margin="0,0,0,18">
                   <Grid.ColumnDefinitions>
@@ -333,17 +333,17 @@
                     <ColumnDefinition Width="*" />
                   </Grid.ColumnDefinitions>
                   <RadioButton x:Name="SafeLatencyButton" Style="{StaticResource SegmentButton}"
-                               GroupName="BridgeLatency" Content="Seguro"
-                               ToolTip="Período predeterminado y 80 ms de prebuffer"
+                               GroupName="BridgeLatency" Content="稳妥"
+                               ToolTip="默认周期，80 ms 预缓冲"
                                Checked="BridgeLatencyChecked" />
                   <RadioButton Grid.Column="2" x:Name="BalancedLatencyButton"
                                Style="{StaticResource SegmentButton}" GroupName="BridgeLatency"
-                               Content="Equilibrado" IsChecked="True"
-                               ToolTip="Período intermedio y 40 ms de prebuffer"
+                               Content="均衡" IsChecked="True"
+                               ToolTip="中等周期，40 ms 预缓冲"
                                Checked="BridgeLatencyChecked" />
                   <RadioButton Grid.Column="4" x:Name="LowLatencyButton"
                                Style="{StaticResource SegmentButton}" GroupName="BridgeLatency"
-                               Content="Bajo" ToolTip="Período mínimo y 20 ms de prebuffer"
+                               Content="低延迟" ToolTip="最短周期，20 ms 预缓冲"
                                Checked="BridgeLatencyChecked" />
                 </Grid>
 
@@ -352,7 +352,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="80" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="Ganancia" />
+                  <TextBlock Text="增益" />
                   <TextBlock Grid.Column="1" x:Name="BridgeGainValue" TextAlignment="Right" />
                 </Grid>
                 <Slider x:Name="BridgeGainSlider" Minimum="0" Maximum="1" Value="0.25"
@@ -363,7 +363,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="80" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="Prebuffer" />
+                  <TextBlock Text="预缓冲" />
                   <TextBlock Grid.Column="1" x:Name="BridgePrebufferValue" TextAlignment="Right" />
                 </Grid>
                 <Slider x:Name="BridgePrebufferSlider" Minimum="20" Maximum="500" Value="40"
@@ -380,7 +380,7 @@
                     <StackPanel Orientation="Horizontal">
                       <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE768;"
                                  FontSize="16" Margin="0,0,8,0" />
-                      <TextBlock x:Name="BridgeStartText" Text="Iniciar" />
+                      <TextBlock x:Name="BridgeStartText" Text="启动" />
                     </StackPanel>
                   </Button>
                   <Button Grid.Column="2" x:Name="BridgeStopButton" Height="42"
@@ -388,7 +388,7 @@
                     <StackPanel Orientation="Horizontal">
                       <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE71A;"
                                  FontSize="16" Margin="0,0,8,0" />
-                      <TextBlock Text="Detener" />
+                      <TextBlock Text="停止" />
                     </StackPanel>
                   </Button>
                 </Grid>
@@ -403,7 +403,7 @@
                     <StackPanel Orientation="Horizontal">
                       <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;"
                                  FontSize="15" Margin="0,0,8,0" />
-                      <TextBlock Text="Sonido espacial" />
+                      <TextBlock Text="Windows 空间音效" />
                     </StackPanel>
                   </Button>
                   <Button Grid.Column="2" x:Name="BridgeOpenLogButton" Height="36"
@@ -411,12 +411,18 @@
                     <StackPanel Orientation="Horizontal">
                       <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8A5;"
                                  FontSize="15" Margin="0,0,8,0" />
-                      <TextBlock Text="Abrir registro" />
+                      <TextBlock Text="打开日志" />
                     </StackPanel>
                   </Button>
                 </Grid>
 
-                <TextBlock Text="NIVELES DE CANAL" FontSize="11" FontWeight="SemiBold"
+                <WrapPanel Margin="0,10,0,8">
+                  <Button Content="打开 Dolby Access" Tag="Dolby" Click="OpenSpatialAppClick" Padding="8,5" Margin="0,0,6,0" />
+                  <Button Content="打开 DTS Sound Unbound" Tag="DtsX" Click="OpenSpatialAppClick" Padding="8,5" />
+                </WrapPanel>
+                <Button Content="检查并重新注册 Dolby / DTS 应用" Click="SpatialDiagnosticsClick" Padding="8,6" Margin="0,0,0,10" />
+                <TextBlock Text="实时游戏桥接需安装虚拟驱动并启用对应空间音效。Cinema 影片可直接输出 ASIO。" TextWrapping="Wrap" Margin="0,0,0,10" />
+                <TextBlock Text="声道电平" FontSize="11" FontWeight="SemiBold"
                            Foreground="#59636A" Margin="0,18,0,8" />
                 <UniformGrid x:Name="BridgeMeterPanel" Columns="2" />
               </StackPanel>

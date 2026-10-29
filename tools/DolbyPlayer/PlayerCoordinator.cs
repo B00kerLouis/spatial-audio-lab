@@ -14,22 +14,19 @@ internal static class PlayerCoordinator {
         await using IAtmosDecodePipeline decoder = stream.Codec == AtmosCodec.Eac3Joc
             ? new Eac3JocDecodePipeline(input, stream, media.DurationSeconds, queue)
             : new TrueHdStreamDecodePipeline(paths, input, stream, media.DurationSeconds, queue);
-        using PcmSinkOutput714 audio = new(
-            queue,
-            paths.ResolveVirtualSinkFilter(options.SinkFilter),
-            options.Gain);
+        using IPlayerAudioOutput audio = PlayerAudioOutput.Create(paths, activeProfile, queue, options.Gain, options.SinkFilter);
         await using MpvController mpv = new(paths.Mpv, input, options.StartSeconds);
 
-        Console.WriteLine($"Audio: 0:{stream.Index} {stream.Codec}, {stream.Channels}ch/{stream.SampleRate} Hz " +
+        Console.WriteLine($"音轨： 0:{stream.Index} {stream.Codec}, {stream.Channels}ch/{stream.SampleRate} Hz " +
                           $"{stream.Language} {stream.Title}".TrimEnd());
-        Console.WriteLine($"Profile: {activeProfile.Name} ({activeProfile.LayoutId})");
-        Console.WriteLine($"PCM 7.1.4 sink: {audio.OutputName}");
-        Console.WriteLine("Preparing Atmos prebuffer...");
+        Console.WriteLine($"配置： {activeProfile.Name} ({activeProfile.LayoutId})");
+        Console.WriteLine($"音频输出： {audio.OutputName}");
+        Console.WriteLine("正在准备空间音频预缓冲…");
 
         await mpv.StartAsync(cancellationToken);
         await decoder.RestartAsync(options.StartSeconds, cancellationToken);
         await decoder.WaitForPrebufferAsync(PrebufferSeconds, cancellationToken);
-        if (decoder.Failure != null) throw new InvalidOperationException("Initial Atmos decode failed.", decoder.Failure);
+        if (decoder.Failure != null) throw new InvalidOperationException("初始空间音频解码失败。", decoder.Failure);
 
         audio.ResetClock(options.StartSeconds);
         audio.Play();
@@ -51,11 +48,11 @@ internal static class PlayerCoordinator {
         double maximumDrift = 0;
         int softCorrections = 0;
         int hardCorrections = 0;
-        Console.WriteLine("Playing. Use the mpv window for pause, seek, fullscreen and subtitles.");
+        Console.WriteLine("正在播放。可在视频窗口中暂停、定位、全屏及选择字幕。");
 
         while (!mpv.HasExited && !cancellationToken.IsCancellationRequested) {
             await Task.Delay(100, cancellationToken);
-            if (decoder.Failure != null) throw new InvalidOperationException("Atmos decoder failed.", decoder.Failure);
+            if (decoder.Failure != null) throw new InvalidOperationException("空间音频解码器失败。", decoder.Failure);
 
             bool paused;
             bool seeking;
@@ -127,9 +124,9 @@ internal static class PlayerCoordinator {
                 }
             }
 
-            if (audio.MediaPositionSeconds >= stopPosition - .02) break;
+            if (audio.MediaPositionSeconds >= stopPosition - .02 && (!decoder.IsCompleted || audio.IsDrained)) break;
             if (decoder.IsCompleted && queue.BufferedFrames == 0 &&
-                queue.MediaPositionSeconds - audio.MediaPositionSeconds < .05) break;
+                (audio is NativePcmOutput714 ? audio.IsDrained : queue.MediaPositionSeconds - audio.MediaPositionSeconds < .05)) break;
             if (!seeking) lastMpvPosition = position;
             lastPoll = now;
             wasSeeking = seeking;

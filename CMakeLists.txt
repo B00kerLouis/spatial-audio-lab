@@ -19,6 +19,7 @@ add_executable(SpatialAudioLab.CLI
   src/mat_pipeline.cpp
   src/multi_endpoint_renderer.cpp
   src/pcm_queue.cpp
+  src/pcm_stdin_renderer.cpp
   src/pcm_pipeline.cpp
   src/speaker_layout.cpp
   src/spatial_audio_sample.cpp
@@ -29,7 +30,7 @@ target_compile_definitions(SpatialAudioLab.CLI PRIVATE UNICODE _UNICODE NOMINMAX
 target_link_libraries(SpatialAudioLab.CLI PRIVATE ole32 runtimeobject windowsapp uuid avrt propsys mmdevapi mf mfplat mfreadwrite mfuuid)
 
 if(MSVC)
-  target_compile_options(SpatialAudioLab.CLI PRIVATE /W4 /permissive- /EHsc)
+  target_compile_options(SpatialAudioLab.CLI PRIVATE /W4 /permissive- /EHsc /utf-8)
 endif()
 
 if(BUILD_TESTING)
@@ -47,7 +48,7 @@ if(BUILD_TESTING)
   target_link_libraries(SpatialAudioLab.NativeTests PRIVATE
     ole32 runtimeobject windowsapp uuid avrt propsys mmdevapi)
   if(MSVC)
-    target_compile_options(SpatialAudioLab.NativeTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_options(SpatialAudioLab.NativeTests PRIVATE /W4 /permissive- /EHsc /utf-8)
   endif()
   add_test(NAME SpatialAudioLab.NativeTests COMMAND SpatialAudioLab.NativeTests)
 endif()

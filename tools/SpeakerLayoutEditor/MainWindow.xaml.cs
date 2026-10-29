@@ -45,8 +45,7 @@ public partial class MainWindow : Window {
     readonly ProfileRepository profileRepository;
     readonly EndpointQuery endpointQuery;
     readonly BridgeProcessService bridgeProcessService = new();
-    readonly ISpatialProviderService spatialProviderService =
-        new DeferredSpatialProviderService();
+    readonly ISpatialProviderService spatialProviderService;
     readonly List<AudioEndpointDescriptor> activeEndpoints = [];
     readonly ObservableCollection<PhysicalDestinationChoice> physicalDestinationChoices = [];
     readonly DispatcherTimer bridgeStatusTimer = new() {
@@ -77,6 +76,7 @@ public partial class MainWindow : Window {
         runtimePaths.EnsureUserDirectories();
         profileRepository = new ProfileRepository(runtimePaths.ProfilesRoot);
         endpointQuery = new EndpointQuery(runtimePaths);
+        spatialProviderService = new WindowsSpatialProviderService(runtimePaths);
         InitializeComponent();
         PhysicalDestinationCombo.ItemsSource = physicalDestinationChoices;
         Loaded += WindowLoaded;
@@ -91,14 +91,15 @@ public partial class MainWindow : Window {
     }
 
     async void WindowLoaded(object sender, RoutedEventArgs e) {
-        ProfileDocument? activeProfile = profileRepository.LoadActive();
+        ProfileDocument? activeProfile = DefaultProfileService.LoadForStartup(runtimePaths);
         if (activeProfile is null) {
-            StatusText.Text = "Se requiere la configuracion inicial de parlantes";
+            StatusText.Text = "需要初始化扬声器配置";
             PathText.Text = runtimePaths.ProfilesRoot;
         } else {
             LoadProfile(activeProfile);
         }
         await RefreshEndpointsAsync();
+        await RefreshAsioDriversAsync();
         UpdateBridgeStatus();
         bridgeStatusTimer.Start();
         meterTimer.Start();
@@ -109,10 +110,11 @@ public partial class MainWindow : Window {
             LayoutDocument imported = LayoutDocument.Load(path);
             ProfileDocument profile = imported.ToProfile();
             profileRepository.Save(profile);
+            DefaultProfileService.SaveIfDefault(runtimePaths, profile);
             profileRepository.SetActive(profile.Id);
             LoadProfile(profile);
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, "No se pudo abrir el perfil",
+            MessageBox.Show(this, error.Message, "无法打开配置",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -132,11 +134,11 @@ public partial class MainWindow : Window {
             RebuildEndpointChoices();
             RebuildBridgeMeters();
             SpeakerList.SelectedIndex = 0;
-            StatusText.Text = "Perfil cargado";
+            StatusText.Text = "配置已加载";
             UpdateAsioControls();
             RedrawMaps();
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, "No se pudo abrir el perfil",
+            MessageBox.Show(this, error.Message, "无法打开配置",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -153,15 +155,15 @@ public partial class MainWindow : Window {
                 StringComparer.CurrentCultureIgnoreCase.Compare(first.Name, second.Name));
             RebuildEndpointChoices();
             StatusText.Text = document is null
-                ? $"Se requiere la configuracion inicial de parlantes · " +
-                  $"{activeEndpoints.Count} endpoints activos"
-                : $"{activeEndpoints.Count} endpoints activos";
+                ? $"需要初始化扬声器配置 · " +
+                  $"{activeEndpoints.Count} 个可用音频设备"
+                : $"{activeEndpoints.Count} 个可用音频设备";
         } catch (Exception error) {
             RebuildEndpointChoices();
             StatusText.Text = document is null
-                ? "Se requiere la configuracion inicial de parlantes · " +
-                  $"No se pudieron actualizar los endpoints: {error.Message}"
-                : $"No se pudieron actualizar los endpoints: {error.Message}";
+                ? "需要初始化扬声器配置 · " +
+                  $"设备刷新失败： {error.Message}"
+                : $"设备刷新失败： {error.Message}";
         } finally {
             RefreshEndpointsButton.IsEnabled = true;
         }
@@ -209,7 +211,7 @@ public partial class MainWindow : Window {
                     if (EndpointChoices.Any(choice => choice.Filter.Equals(
                             output.Endpoint, StringComparison.OrdinalIgnoreCase))) continue;
                     EndpointChoices.Add(new EndpointChoice(
-                        output.Endpoint, $"{output.EndpointName} (no disponible)", null));
+                        output.Endpoint, $"{output.EndpointName} （未连接）", null));
                 }
             }
             OutputGrid.Items.Refresh();
@@ -226,7 +228,7 @@ public partial class MainWindow : Window {
         if (output.Endpoint.Equals(choice.Filter, StringComparison.OrdinalIgnoreCase)) return;
         AudioEndpointDescriptor endpoint = choice.Descriptor;
         if (endpoint.MaximumChannels48k < output.Speakers.Count) {
-            StatusText.Text = "El endpoint no tiene suficientes canales para esta ruta.";
+            StatusText.Text = "该设备的声道数量不足。";
             RebuildEndpointChoices();
             return;
         }
@@ -237,7 +239,7 @@ public partial class MainWindow : Window {
             ReferenceEquals(document?.OutputFor(selectedSpeaker.Name), output)) {
             DestinationEndpointText.Text = output.Endpoint;
         }
-        StatusText.Text = $"Endpoint actualizado: {output.Name}";
+        StatusText.Text = $"已更新输出设备： {output.Name}";
     }
 
     void UpdateAsioControls() {
@@ -248,25 +250,29 @@ public partial class MainWindow : Window {
         if (route is not null) {
             var drivers = AsioDriverCombo.ItemsSource as IReadOnlyList<AsioDriverDescriptor>;
             AsioDriverDescriptor? driver = drivers?.FirstOrDefault(item =>
-                item.Clsid.Equals(route.AsioDriver, StringComparison.OrdinalIgnoreCase));
+                item.Clsid.Equals(route.AsioDriver, StringComparison.OrdinalIgnoreCase))
+                ?? drivers?.OrderByDescending(item => item.Name.Contains("(64x)", StringComparison.OrdinalIgnoreCase) || item.Name.Contains("(x64)", StringComparison.OrdinalIgnoreCase)).FirstOrDefault(item => item.Name.Contains(
+                    route.AsioDriverName ?? "Dante Virtual Soundcard", StringComparison.OrdinalIgnoreCase));
             if (driver is null) {
-                driver = new AsioDriverDescriptor(route.EndpointName, route.AsioDriver!);
+                driver = new AsioDriverDescriptor(route.EndpointName, route.AsioDriver ?? string.Empty);
                 AsioDriverCombo.ItemsSource = (drivers ?? []).Append(driver).ToList();
             }
             AsioDriverCombo.SelectedItem = driver;
-            AsioStatusText.Text = $"ASIO: {route.EndpointName} · {route.ExpectedChannels} canales";
+            AsioStatusText.Text = $"ASIO: {route.EndpointName} · 映射 {route.Speakers.Count} 声道";
         } else {
-            AsioStatusText.Text = "Seleccione un driver y aplique ASIO a todos los parlantes.";
+            AsioStatusText.Text = "请选择驱动并将全部扬声器输出至 ASIO。";
         }
     }
 
-    async void RefreshAsioClick(object sender, RoutedEventArgs e) {
+    async void RefreshAsioClick(object sender, RoutedEventArgs e) => await RefreshAsioDriversAsync();
+
+    async Task RefreshAsioDriversAsync() {
         try {
             var drivers = await endpointQuery.QueryAsioAsync();
             AsioDriverCombo.ItemsSource = drivers;
             AsioDriverCombo.SelectedIndex = drivers.Count == 0 ? -1 : 0;
             UpdateAsioControls();
-            AsioStatusText.Text = $"{drivers.Count} drivers ASIO x64 instalados.";
+            AsioStatusText.Text = $"{drivers.Count} 个已安装的 64 位 ASIO 驱动。";
         } catch (Exception error) {
             AsioStatusText.Text = error.Message;
         }
@@ -274,11 +280,11 @@ public partial class MainWindow : Window {
 
     async void ApplyAsioClick(object sender, RoutedEventArgs e) {
         if (document is null || AsioDriverCombo.SelectedItem is not AsioDriverDescriptor driver) {
-            AsioStatusText.Text = "Abra un perfil y seleccione un driver ASIO.";
+            AsioStatusText.Text = "请先打开配置并选择 ASIO 驱动。";
             return;
         }
         if (bridgeCommandRunning || RunningBridgeModes().Count != 0) {
-            AsioStatusText.Text = "Detenga el puente antes de consultar o cambiar el dispositivo ASIO.";
+            AsioStatusText.Text = "请先停止实时桥接，再查询或切换 ASIO 设备。";
             return;
         }
         ApplyAsioButton.IsEnabled = false;
@@ -288,20 +294,20 @@ public partial class MainWindow : Window {
         LayoutDocument targetDocument = document;
         try {
             if (!int.TryParse(AsioBufferText.Text, out int buffer) || buffer < 0)
-                throw new InvalidDataException("El buffer debe ser un entero no negativo.");
+                throw new InvalidDataException("缓冲帧数必须为非负整数。");
             int[] channels = string.IsNullOrWhiteSpace(AsioChannelsText.Text)
                 ? Enumerable.Range(1, document.Speakers.Count).ToArray()
                 : AsioChannelsText.Text.Split(',').Select(value => int.Parse(value.Trim(), CultureInfo.InvariantCulture)).ToArray();
             var device = await endpointQuery.InspectAsioAsync(driver.Clsid);
             if (!ReferenceEquals(document, targetDocument))
-                throw new InvalidOperationException("El perfil cambio durante la consulta. Vuelva a aplicar ASIO.");
-            if (!device.Supports48k) throw new InvalidDataException("El driver no admite PCM a 48 kHz.");
+                throw new InvalidOperationException("查询期间配置已更改，请重新应用 ASIO。");
+            if (!device.Supports48k) throw new InvalidDataException("驱动不支持 48 kHz PCM。");
             if (buffer != 0 && (buffer < device.MinimumBufferFrames || buffer > device.MaximumBufferFrames ||
                 (device.BufferGranularity == -1 && (buffer & (buffer - 1)) != 0) ||
                 (device.BufferGranularity > 0 && (buffer - device.MinimumBufferFrames) % device.BufferGranularity != 0)))
-                throw new InvalidDataException($"Buffer invalido: {device.MinimumBufferFrames}..{device.MaximumBufferFrames}, granularidad {device.BufferGranularity}.");
+                throw new InvalidDataException($"缓冲帧数无效： {device.MinimumBufferFrames}..{device.MaximumBufferFrames}, 步长 {device.BufferGranularity}.");
             OutputRouteDefinition output = new() {
-                Name = "asio", Backend = OutputBackend.Asio, AsioDriver = driver.Clsid,
+                Name = "asio", Backend = OutputBackend.Asio, AsioDriver = driver.Clsid, AsioDriverName = driver.Name,
                 AsioBufferFrames = buffer,
                 DelayMilliseconds = document.Outputs.FirstOrDefault(route => route.Backend == OutputBackend.Asio)?.DelayMilliseconds ?? 0
             };
@@ -315,7 +321,7 @@ public partial class MainWindow : Window {
             candidate.Outputs.Add(new SpatialAudioLab.Core.Profiles.OutputRouteDefinition(
                 "asio", new EndpointIdentity("asio:" + driver.Clsid, driver.Name, null, device.OutputNames.Count),
                 output.Speakers, output.DelayMilliseconds) {
-                Backend = OutputBackend.Asio, AsioDriver = driver.Clsid,
+                Backend = OutputBackend.Asio, AsioDriver = driver.Clsid, AsioDriverName = driver.Name,
                 AsioChannels = channels, AsioBufferFrames = buffer
             });
             candidate.MasterOutput = "asio";
@@ -330,7 +336,7 @@ public partial class MainWindow : Window {
             UpdateAsioControls();
             if (selectedSpeaker is not null) UpdateSpeakerControls();
             RedrawMaps();
-            AsioStatusText.Text = $"{driver.Name}: {device.OutputNames.Count} salidas, buffer preferido {device.PreferredBufferFrames}. Guarde el perfil.";
+            AsioStatusText.Text = $"{driver.Name}: {device.OutputNames.Count} 路输出，驱动首选缓冲 {device.PreferredBufferFrames}. 请保存配置。";
         } catch (Exception error) {
             AsioStatusText.Text = error.Message;
         } finally {
@@ -347,7 +353,7 @@ public partial class MainWindow : Window {
             for (int index = 0; index < output.Speakers.Count; ++index) {
                 physicalDestinationChoices.Add(new PhysicalDestinationChoice(
                     output, index,
-                    $"{output.Name} / {output.PhysicalChannelName(index)} (canal {index + 1})"));
+                    $"{output.Name} / {output.PhysicalChannelName(index)} (声道 {index + 1})"));
             }
         }
     }
@@ -369,10 +375,10 @@ public partial class MainWindow : Window {
         BridgeLatencyMode.Balanced;
 
     static string BridgeName(BridgeMode mode) => mode switch {
-        BridgeMode.Atmos => "Dolby Atmos (Windows)",
-        BridgeMode.NativeMat => "Dolby MAT nativo",
+        BridgeMode.Atmos => "Dolby 杜比全景声（Windows）",
+        BridgeMode.NativeMat => "杜比原生 MAT",
         BridgeMode.DtsX => "DTS:X",
-        BridgeMode.Pcm => "PCM propio 7.1.4",
+        BridgeMode.Pcm => "原生 PCM 7.1.4",
         _ => throw new ArgumentOutOfRangeException(nameof(mode))
     };
 
@@ -466,14 +472,14 @@ public partial class MainWindow : Window {
 
         if (!bridgeCommandRunning) {
             if (runningModes.Count > 1) {
-                BridgeStatusText.Text = "Varios puentes activos";
+                BridgeStatusText.Text = "检测到多个活动桥接";
             } else if (runningModes.Count == 1 &&
                        TryGetLiveBridgeProcess(statusMode, out Process? process)) {
                 using (process) {
-                    BridgeStatusText.Text = $"{BridgeName(statusMode)} activo · PID {process!.Id}";
+                    BridgeStatusText.Text = $"{BridgeName(statusMode)}运行中 · PID {process!.Id}";
                 }
             } else {
-                BridgeStatusText.Text = $"{BridgeName(statusMode)} detenido";
+                BridgeStatusText.Text = $"{BridgeName(statusMode)}已停止";
             }
         }
 
@@ -489,8 +495,8 @@ public partial class MainWindow : Window {
             BridgeStartButton.IsEnabled = !selectedModeRunning;
             BridgeStopButton.IsEnabled = anyRunning;
             BridgeStartText.Text = !anyRunning
-                ? "Iniciar"
-                : selectedModeRunning ? "Activo" : "Cambiar";
+                ? "启动"
+                : selectedModeRunning ? "运行中" : "切换";
         }
         MatModeButton.IsEnabled = !bridgeCommandRunning;
         NativeMatModeButton.IsEnabled = !bridgeCommandRunning;
@@ -515,8 +521,8 @@ public partial class MainWindow : Window {
         BridgeStartButton.IsEnabled = false;
         BridgeStopButton.IsEnabled = false;
         BridgeStatusText.Text = switching
-            ? $"Cambiando a {bridgeName}..."
-            : $"Iniciando {bridgeName}...";
+            ? $"正在切换至 {bridgeName}..."
+            : $"正在启动 {bridgeName}...";
         try {
             foreach (BridgeMode runningMode in RunningBridgeModes()) {
                 await bridgeProcessService.StopAsync(BridgePidPath(runningMode));
@@ -531,12 +537,12 @@ public partial class MainWindow : Window {
                 SelectedBridgeLatencyMode);
             await bridgeProcessService.StartAsync(command);
             StatusText.Text = switching
-                ? $"Puente cambiado a {bridgeName}"
-                : $"{bridgeName} iniciado";
+                ? $"已切换至 {bridgeName}"
+                : $"{bridgeName}已启动";
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, $"No se pudo iniciar {bridgeName}",
+            MessageBox.Show(this, error.Message, $"无法启动 {bridgeName}",
                 MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusText.Text = $"Error al iniciar {bridgeName}";
+            StatusText.Text = $"启动失败： {bridgeName}";
         } finally {
             bridgeCommandRunning = false;
             UpdateBridgeStatus();
@@ -547,16 +553,16 @@ public partial class MainWindow : Window {
         bridgeCommandRunning = true;
         BridgeStartButton.IsEnabled = false;
         BridgeStopButton.IsEnabled = false;
-        BridgeStatusText.Text = "Deteniendo puente...";
+        BridgeStatusText.Text = "正在停止桥接…";
         try {
             foreach (BridgeMode mode in RunningBridgeModes()) {
                 await bridgeProcessService.StopAsync(BridgePidPath(mode));
             }
-            StatusText.Text = "Puente detenido";
+            StatusText.Text = "桥接已停止";
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, "No se pudo detener el puente",
+            MessageBox.Show(this, error.Message, "无法停止桥接",
                 MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusText.Text = "Error al detener el puente";
+            StatusText.Text = "停止桥接失败";
         } finally {
             bridgeCommandRunning = false;
             UpdateBridgeStatus();
@@ -577,9 +583,36 @@ public partial class MainWindow : Window {
                 UseShellExecute = true
             });
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, "No se pudo abrir Sonido",
+            MessageBox.Show(this, error.Message, "无法打开 Windows 声音设置",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    async void SpatialDiagnosticsClick(object sender, RoutedEventArgs e) {
+        try {
+            StatusText.Text = "正在检查虚拟端点与 Dolby / DTS 应用…";
+            string script = IOPath.Combine(runtimePaths.ApplicationRoot, "Tools", "Diagnose-SpatialAudio.ps1");
+            string shell = IOPath.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+            ProcessStartInfo start = new(shell) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-RepairAppRegistration" }) start.ArgumentList.Add(argument);
+            using Process query = Process.Start(start) ?? throw new IOException("无法启动空间音效诊断。");
+            Task<string> output = query.StandardOutput.ReadToEndAsync(), errors = query.StandardError.ReadToEndAsync();
+            await query.WaitForExitAsync();
+            string report = await output + "\n" + await errors;
+            string log = IOPath.Combine(runtimePaths.LogsRoot, "spatial-app-check.log");
+            File.WriteAllText(log, report);
+            Process.Start(new ProcessStartInfo(log) { UseShellExecute = true });
+            StatusText.Text = "诊断已完成；报告中记录了应用注册、端点能力和实际启用状态。";
+        } catch (Exception error) { StatusText.Text = "空间音效诊断失败：" + error.Message; }
+    }
+
+    void OpenSpatialAppClick(object sender, RoutedEventArgs e) {
+        if (sender is not Button button || button.Tag is not string query) return;
+        string script = IOPath.Combine(runtimePaths.ApplicationRoot, "Tools", "Open-SpatialApp.ps1");
+        string shell = IOPath.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        ProcessStartInfo start = new(shell) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (string argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-App", query }) start.ArgumentList.Add(argument);
+        try { Process.Start(start); } catch (Exception error) { StatusText.Text = error.Message; }
     }
 
     void RebuildBridgeMeters() {
@@ -587,7 +620,7 @@ public partial class MainWindow : Window {
         channelMeters.Clear();
         if (document is null) return;
         if (document.Speakers.Count > 32)
-            BridgeMeterPanel.Children.Add(new TextBlock { Text = "Medidores: primeros 32 parlantes; todas las salidas siguen activas.", TextWrapping = TextWrapping.Wrap });
+            BridgeMeterPanel.Children.Add(new TextBlock { Text = "电平表显示前 32 个扬声器；全部音频输出仍然有效。", TextWrapping = TextWrapping.Wrap });
         foreach (SpeakerDefinition speaker in document.Speakers.Take(32)) {
             ChannelMeterControl meter = new(speaker.Name);
             channelMeters.Add(speaker.Name, meter);
@@ -636,7 +669,7 @@ public partial class MainWindow : Window {
 
     void OpenClick(object sender, RoutedEventArgs e) {
         OpenFileDialog dialog = new() {
-            Filter = "Perfil de parlantes (*.ini)|*.ini|Todos los archivos (*.*)|*.*",
+            Filter = "扬声器配置 (*.ini)|*.ini|所有文件 (*.*)|*.*",
             InitialDirectory = runtimePaths.ProfilesRoot
         };
         if (dialog.ShowDialog(this) == true) LoadProfile(dialog.FileName);
@@ -652,7 +685,7 @@ public partial class MainWindow : Window {
 
     void SaveAsClick(object sender, RoutedEventArgs e) {
         SaveFileDialog dialog = new() {
-            Filter = "Perfil de parlantes (*.ini)|*.ini",
+            Filter = "扬声器配置 (*.ini)|*.ini",
             InitialDirectory = runtimePaths.ProfilesRoot,
             FileName = currentPath is null ? "speaker-layout.ini" : IOPath.GetFileName(currentPath)
         };
@@ -664,6 +697,7 @@ public partial class MainWindow : Window {
         try {
             ProfileDocument profile = document.ToProfile();
             profileRepository.Save(profile);
+            DefaultProfileService.SaveIfDefault(runtimePaths, profile);
             profileRepository.SetActive(profile.Id);
             string canonicalPath = IOPath.Combine(
                 runtimePaths.ProfilesRoot,
@@ -675,11 +709,11 @@ public partial class MainWindow : Window {
             currentPath = canonicalPath;
             PathText.Text = currentPath;
             StatusText.Text = requestedPath.Equals(canonicalPath, StringComparison.OrdinalIgnoreCase)
-                ? "Perfil guardado"
-                : $"Perfil guardado y exportado a {requestedPath}";
+                ? "配置已保存"
+                : $"配置已保存并导出至 {requestedPath}";
             return true;
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, "No se pudo guardar el perfil",
+            MessageBox.Show(this, error.Message, "无法保存配置",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
@@ -699,7 +733,7 @@ public partial class MainWindow : Window {
         TrimSlider.IsEnabled = enabled;
         PhysicalDestinationCombo.IsEnabled = enabled;
         if (enabled) {
-            SelectedNameText.Text = selectedSpeaker!.Name;
+            SelectedNameText.Text = selectedSpeaker!.DisplayName;
             AzimuthSlider.Value = selectedSpeaker.Azimuth;
             ElevationSlider.Value = selectedSpeaker.Elevation;
             TrimSlider.Value = selectedSpeaker.TrimDb;
@@ -709,7 +743,7 @@ public partial class MainWindow : Window {
                     ReferenceEquals(choice.Output, slot.Value.Output) &&
                     choice.ChannelIndex == slot.Value.ChannelIndex)
                 : null;
-            DestinationEndpointText.Text = slot?.Output.Endpoint ?? "Sin destino";
+            DestinationEndpointText.Text = slot?.Output.Endpoint ?? "未分配输出";
         } else {
             SelectedNameText.Text = "";
             PhysicalDestinationCombo.SelectedItem = null;
@@ -767,28 +801,28 @@ public partial class MainWindow : Window {
         }
         UpdateSpeakerControls();
         RedrawMaps();
-        StatusText.Text = $"{reset} posiciones restablecidas (sin guardar)";
+        StatusText.Text = $"{reset} 个扬声器已恢复默认位置（尚未保存）";
     }
 
     async void TestSpeakerClick(object sender, RoutedEventArgs e) {
         if (document is null || selectedSpeaker is null || currentPath is null) return;
         if (bridgeCommandRunning ||
             (document.Outputs.Any(output => output.Backend == OutputBackend.Asio) && RunningBridgeModes().Count != 0)) {
-            StatusText.Text = "Detenga el puente y espere las consultas o pruebas de audio antes de probar ASIO.";
+            StatusText.Text = "请先停止桥接，等待当前音频查询／测音结束后再测试 ASIO。";
             return;
         }
         if (!SaveProfile(currentPath)) return;
         string executable = runtimePaths.EngineExecutable;
         if (!File.Exists(executable)) {
-            MessageBox.Show(this, $"No se encontro el Engine en:\n{executable}",
-                "Falta SpatialAudioLab.CLI.exe", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"找不到音频引擎：\n{executable}",
+                "缺少 SpatialAudioLab.CLI.exe", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         bridgeCommandRunning = true;
         BridgeStartButton.IsEnabled = false;
         BridgeStopButton.IsEnabled = false;
         try {
-            StatusText.Text = $"Probando {selectedSpeaker.Name}";
+            StatusText.Text = $"正在测试 {selectedSpeaker.Name}";
             ProcessStartInfo start = new(executable) {
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -800,15 +834,15 @@ public partial class MainWindow : Window {
             start.ArgumentList.Add(TestGainSlider.Value.ToString(
                 "0.###", CultureInfo.InvariantCulture));
             using Process process = Process.Start(start) ??
-                throw new InvalidOperationException("No se pudo iniciar la prueba.");
+                throw new InvalidOperationException("无法启动 la prueba.");
             await process.WaitForExitAsync();
             StatusText.Text = process.ExitCode == 0
-                ? $"Prueba completada: {selectedSpeaker.Name}"
-                : $"La prueba termino con codigo {process.ExitCode}";
+                ? $"测试完成： {selectedSpeaker.Name}"
+                : $"测试结束，退出码： {process.ExitCode}";
         } catch (Exception error) {
-            MessageBox.Show(this, error.Message, "Error de prueba",
+            MessageBox.Show(this, error.Message, "测音失败",
                 MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusText.Text = "Error de prueba";
+            StatusText.Text = "测音失败";
         } finally {
             bridgeCommandRunning = false;
             UpdateBridgeStatus();
@@ -894,7 +928,7 @@ public partial class MainWindow : Window {
             Tag = speaker,
             Cursor = Cursors.Hand,
             Child = new TextBlock {
-                Text = speaker.Name,
+                Text = speaker.DisplayName.Split(' ')[0],
                 Foreground = Brushes.White,
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,

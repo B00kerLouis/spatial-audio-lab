@@ -25,6 +25,7 @@ struct OutputRouteDefinition {
     double delayMilliseconds{};
     OutputBackend backend{OutputBackend::Wasapi};
     std::wstring asioDriver;
+    std::wstring asioDriverName;
     std::vector<long> asioChannels; // zero-based driver channels, INI is one-based
     long asioBufferFrames{}; // zero uses the driver preferred size
 };

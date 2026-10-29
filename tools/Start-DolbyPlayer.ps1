@@ -18,7 +18,7 @@ param(
     [ValidateRange(0, 86400)]
     [double]$StopAfterSeconds = 0,
 
-    [string]$SinkEndpoint = '1 - HISENSE (Virtual Audio Device',
+    [string]$SinkEndpoint = '',
 
     [switch]$SkipBridgeSetup
 )
@@ -36,18 +36,17 @@ $requiredApplicationFiles = @(
 if (@($requiredApplicationFiles | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -ne 0) {
     & (Join-Path $PSScriptRoot 'Publish-SpatialAudioLabCinema.ps1') -Destination $applicationRoot
 }
-if (-not $SkipBridgeSetup) {
-    & (Join-Path $PSScriptRoot 'Ensure-LivePcm714.ps1')
-}
+# Cinema now renders directly through the native ASIO/WASAPI engine.
+
 
 $invariant = [Globalization.CultureInfo]::InvariantCulture
 $arguments = @(
     'play', (Resolve-Path -LiteralPath $InputFile).Path,
     '--start', $StartSeconds.ToString($invariant),
     '--gain', $Gain.ToString($invariant),
-    '--av-delay-ms', $AvDelayMilliseconds.ToString($invariant),
-    '--sink', $SinkEndpoint
+    '--av-delay-ms', $AvDelayMilliseconds.ToString($invariant)
 )
+if (-not [string]::IsNullOrWhiteSpace($SinkEndpoint)) { $arguments += @('--sink', $SinkEndpoint) }
 if ($AudioStreamIndex -ge 0) {
     $arguments += @('--audio-track', $AudioStreamIndex.ToString($invariant))
 }

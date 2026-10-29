@@ -2,7 +2,7 @@
 param([Parameter(Mandatory)][string]$PackageRoot)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$required = @('SpatialAudioLab.Studio.exe', 'SpatialAudioLab.Cinema.exe', 'coreclr.dll',
+$required = @('SpatialAudioLab.Studio.exe', 'SpatialAudioLab.Cinema.exe', 'SpatialAudioLab.Cinema.Engine.exe', 'default.ini', 'coreclr.dll',
     'Engine\SpatialAudioLab.CLI.exe', 'Tools\truehdd\truehd-stream.exe',
     'Tools\mpv\mpv.exe', 'Tools\ffmpeg\bin\ffprobe.exe', 'Tools\ffmpeg\bin\ffmpeg.exe',
     'Driver\Package\TabletAudioSample.sys', 'Driver\Package\ComponentizedAudioSample.inf',
@@ -68,5 +68,15 @@ try {
     } finally {
         if (-not $studio.HasExited) { $studio.Kill(); $studio.WaitForExit() }
     }
+    $cinema = Start-Process (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') -PassThru -WorkingDirectory $smoke
+    try {
+        $deadline = (Get-Date).AddSeconds(30)
+        do { Start-Sleep -Seconds 1; $cinema.Refresh() }
+        while (-not $cinema.HasExited -and $cinema.MainWindowTitle -notlike '*Cinema*影院*' -and (Get-Date) -lt $deadline)
+        if ($cinema.HasExited -or $cinema.MainWindowTitle -notlike '*Cinema*影院*') { throw 'Cinema graphical launcher did not open.' }
+        Write-Host "Cinema GUI smoke window: $($cinema.MainWindowTitle)"
+    } finally { if (-not $cinema.HasExited) { $cinema.Kill($true); $cinema.WaitForExit() } }
+    & python (Join-Path $PSScriptRoot 'Test-PcmInput.py') --engine (Join-Path $smoke 'Engine\SpatialAudioLab.CLI.exe') --profile (Join-Path $smoke 'default.ini')
+    if ($LASTEXITCODE -ne 0) { throw 'Direct Cinema PCM pipe mapping test failed.' }
     Write-Host 'Complete Windows package smoke test passed, including actual TrueHD object rendering.'
 } finally { Remove-Item $smoke -Recurse -Force }

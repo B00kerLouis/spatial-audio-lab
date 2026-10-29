@@ -9,6 +9,8 @@
 
 namespace dolby {
 
+void RenderPcmStdin(const std::filesystem::path& layoutPath, double gain, bool validateOnly);
+
 enum class RendererLatencyMode;
 
 enum class DtsXDecodeOutput {

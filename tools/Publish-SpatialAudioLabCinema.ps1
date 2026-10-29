@@ -14,7 +14,8 @@ if ([string]::IsNullOrWhiteSpace($Destination)) {
     $Destination = Join-Path $repoRoot 'build\SpatialAudioLab'
 }
 if ([string]::IsNullOrWhiteSpace($CinemaSource)) {
-    $CinemaSource = Join-Path $PSScriptRoot 'DolbyPlayer\bin\Release\net8.0-windows'
+    $CinemaSource = Join-Path $PSScriptRoot 'CinemaLauncher\bin\Release\net8.0-windows'
+    $cinemaEngineSource = Join-Path $PSScriptRoot 'DolbyPlayer\bin\Release\net8.0-windows'
 }
 if (-not $SkipBuild) {
     & (Join-Path $PSScriptRoot 'Build-DolbyPlayer.ps1')
@@ -48,6 +49,7 @@ foreach ($path in $requiredSources) {
 }
 
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+if ($cinemaEngineSource) { Copy-Item -Path (Join-Path $cinemaEngineSource '*') -Destination $Destination -Recurse -Force }
 Copy-Item -Path (Join-Path $CinemaSource '*') -Destination $Destination -Recurse -Force
 
 $ffprobeDestination = Join-Path $Destination 'Tools\ffmpeg\bin\ffprobe.exe'

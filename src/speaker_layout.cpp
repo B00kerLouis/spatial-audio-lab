@@ -194,8 +194,11 @@ SpeakerLayout LoadSpeakerLayout(const std::filesystem::path& path) {
         const auto backend = Lowercase(ReadIniString(fullPath, section, L"backend", L"wasapi"));
         if (backend == L"asio") {
             output.backend = OutputBackend::Asio;
-            output.asioDriver = ReadRequiredIniString(fullPath, section, L"asio_driver");
-            output.endpointFilter = L"asio:" + output.asioDriver;
+            output.asioDriver = ReadIniString(fullPath, section, L"asio_driver");
+            output.asioDriverName = ReadIniString(fullPath, section, L"asio_driver_name");
+            if (output.asioDriver.empty() && output.asioDriverName.empty())
+                throw std::runtime_error("ASIO driver name or CLSID is required");
+            output.endpointFilter = L"asio:" + (output.asioDriver.empty() ? output.asioDriverName : output.asioDriver);
             const auto channels = ReadIniString(fullPath, section, L"asio_channels");
             if (!channels.empty()) {
                 for (const auto& token : SplitList(channels)) {

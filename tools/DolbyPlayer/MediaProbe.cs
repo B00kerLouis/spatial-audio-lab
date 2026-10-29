@@ -14,7 +14,7 @@ internal sealed record MediaInfo(double DurationSeconds, IReadOnlyList<AudioStre
             : AtmosStreams.FirstOrDefault();
         return result ?? throw new InvalidOperationException(streamIndex.HasValue
             ? $"Stream 0:{streamIndex} is not E-AC-3 JOC or TrueHD Atmos."
-            : "No E-AC-3 JOC or TrueHD Atmos stream was found.");
+            : "未找到 E-AC-3 JOC 或 TrueHD Atmos 音轨。");
     }
 }
 
@@ -47,7 +47,7 @@ internal static class MediaProbe {
             !double.TryParse(durationValue.GetString(), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out double duration)) {
             throw new InvalidDataException(
-                "The input has no timeline duration. Use the original movie container instead of a raw TrueHD stream.");
+                "输入文件没有时间轴时长，请使用原始 MKV / MKA 影片容器。");
         }
         List<AudioStreamInfo> streams = new();
         foreach (JsonElement stream in root.GetProperty("streams").EnumerateArray()) {

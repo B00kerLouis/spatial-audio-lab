@@ -19,7 +19,12 @@ Studio 的 **Salidas** 页提供 ASIO 驱动选择器：
 
 应用设置时会短暂打开设备查询实际输出数、48 kHz 支持与缓冲限制，不启动音频，也不修改采样率。先停止桥接后再执行此查询。所有逻辑扬声器合并到一条 ASIO 主路由；旧路由的不同延迟不转移到合并路由，ASIO 路由延迟可在表格中设置。重选 WASAPI endpoint 会清除该路由的 ASIO 设置，恢复多个 WASAPI 设备请重新打开之前保存的配置。
 
-Studio 会保存 `backend`、`asio_driver`、`asio_channels` 和 `asio_buffer_frames`，也能导入生成器输出。使用 Cinema 前先在 Studio 启动 **PCM 7.1.4** 桥接，让 Cinema 的虚拟 PCM sink 经该活动 ASIO 配置输出。源码中的旧版 `Start-DolbyPlayer.ps1` 自动桥接仍使用原来的默认布局；应保持 Studio 的 PCM 桥接运行，或传入 `-SkipBridgeSetup`。本次没有用真实媒体和硬件验收 Cinema 播放。
+程序每次启动会读取安装目录中的 `default.ini`，默认 7.1.4 使用 Dante Virtual Soundcard，兼容 `(64x)` 名称。输出顺序为 L,R,C,LF,LS,RS,LSR,RSR,LTF,RTF,LTR,RTR（ASIO 1..12）。INI 内部规范名依次为 FL,FR,FC,LFE,SL,SR,BL,BR,TFL,TFR,TBL,TBR。Studio 保存该默认配置时也更新此 INI，重启后保留编辑。
+
+Cinema 已有中文图形入口：双击 `SpatialAudioLab.Cinema.exe` 打开窗口。影片以 Float32 PCM 通过 `render-pcm-stdin` 直送同一个原生 ASIO/WASAPI 引擎，不需要虚拟驱动或 Windows Dolby/DTS 提供程序。原有命令行命令仍由入口转发至 `SpatialAudioLab.Cinema.Engine.exe`。影院的输出时钟是渲染进度估计，硬件时钟偏差仍需实测。
+
+游戏实时桥接保留虚拟驱动路径。Studio 现在会真正调用空间音效准备与验证工具，自动识别虚拟端点及设备实例，保留端点状态备份和诊断日志。Dolby/DTS 应用内许可状态由各自应用管理；不能把端点配置成功等同于真实激活验收。
+
 既有 V1 共享仪表协议显示前 32 个逻辑扬声器；较大的布局仍输出全部声道，仪表上限不再阻止桥接启动。
 
 ## 构建

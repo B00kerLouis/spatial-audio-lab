@@ -40,9 +40,7 @@ internal sealed class PlayerPaths
 
     public ProfileDocument RequireActiveProfile()
     {
-        return new ProfileRepository(Runtime.ProfilesRoot).LoadActive() ??
-            throw new InvalidOperationException(
-                "No active speaker profile is configured. Complete the initial setup in SpatialAudioLab Studio.");
+        return DefaultProfileService.LoadForStartup(Runtime);
     }
 
     public string ResolveVirtualSinkFilter(string? diagnosticOverride)
@@ -56,19 +54,19 @@ internal sealed class PlayerPaths
     {
         if (!File.Exists(Ffprobe))
         {
-            throw new FileNotFoundException("The bundled ffprobe executable is missing.", Ffprobe);
+            throw new FileNotFoundException("缺少包内 ffprobe 程序。", Ffprobe);
         }
 
         if (!File.Exists(TrueHdStream))
         {
             throw new FileNotFoundException(
-                "The bundled streaming TrueHD decoder is missing.",
+                "缺少包内 TrueHD 串流解码器。",
                 TrueHdStream);
         }
 
         if (requireMpv && !File.Exists(Mpv))
         {
-            throw new FileNotFoundException("The bundled mpv executable is missing.", Mpv);
+            throw new FileNotFoundException("缺少包内 mpv 播放器。", Mpv);
         }
 
         Directory.CreateDirectory(CacheRoot);

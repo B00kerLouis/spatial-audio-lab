@@ -3,7 +3,7 @@ using NAudio.Wave;
 
 namespace DolbyPlayer;
 
-internal sealed class PcmSinkOutput714 : IDisposable {
+internal sealed class PcmSinkOutput714 : IPlayerAudioOutput {
     static readonly Guid IeeeFloatSubFormat =
         new("00000003-0000-0010-8000-00aa00389b71");
     readonly MMDeviceEnumerator enumerator = new();
@@ -20,6 +20,7 @@ internal sealed class PcmSinkOutput714 : IDisposable {
     public double MediaPositionSeconds => mediaClockBase +
         ClockSeconds(sinkOutput.GetPosition() - sinkClockBase, sinkBlockAlign);
     public double ClockSkewMilliseconds => 0;
+    public bool IsDrained => State == PlaybackState.Stopped;
 
     public PcmSinkOutput714(Pcm714Buffer buffer, string sinkFilter,
                             float gain, int latencyMilliseconds = 30) {

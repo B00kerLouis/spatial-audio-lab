@@ -1,6 +1,9 @@
 using DolbyPlayer;
 using SpatialAudioLab.Core.Profiles;
 
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("zh-CN");
+
 try {
     return await MainAsync(args);
 } catch (OperationCanceledException) {
@@ -26,7 +29,7 @@ static async Task<int> MainAsync(string[] args) {
 
     string command = args[0].ToLowerInvariant();
     string input = Path.GetFullPath(args[1]);
-    if (!File.Exists(input)) throw new FileNotFoundException("Input media was not found.", input);
+    if (!File.Exists(input)) throw new FileNotFoundException("找不到输入影片。", input);
     PlayerPaths paths = new();
 
     using CancellationTokenSource cancellation = new();
@@ -47,8 +50,8 @@ static async Task<int> MainAsync(string[] args) {
             queue,
             paths.ResolveVirtualSinkFilter(null),
             gain);
-        Console.WriteLine($"Profile: {selfTestProfile.Name} ({selfTestProfile.LayoutId})");
-        Console.WriteLine($"PCM 7.1.4 sink: {output.OutputName}");
+        Console.WriteLine($"配置： {selfTestProfile.Name} ({selfTestProfile.LayoutId})");
+        Console.WriteLine($"音频输出： {output.OutputName}");
         output.Play();
         double duration = pcm.Length / (double)(Pcm714Buffer.Channels * Pcm714Buffer.SampleRate);
         while (queue.MediaPositionSeconds < duration) await Task.Delay(10, cancellation.Token);
@@ -78,8 +81,8 @@ static async Task<int> MainAsync(string[] args) {
         await testDecoder.RestartAsync(testOptions.StartSeconds, cancellation.Token);
         await testDecoder.WaitForPrebufferAsync(5, cancellation.Token);
         if (testDecoder.Failure != null) throw new InvalidOperationException(
-            "Atmos decode test failed.", testDecoder.Failure);
-        Console.WriteLine($"Decoded {testQueue.BufferedFrames / (double)Pcm714Buffer.SampleRate:F3} s " +
+            "空间音频解码测试失败。", testDecoder.Failure);
+        Console.WriteLine($"已解码 {testQueue.BufferedFrames / (double)Pcm714Buffer.SampleRate:F3} s " +
                           $"of {testStream.Codec} in {timer.Elapsed.TotalSeconds:F3} s.");
         PrintChannelLevels(testQueue.SnapshotBuffered());
         return 0;
@@ -92,22 +95,19 @@ static async Task<int> MainAsync(string[] args) {
         await using IAtmosDecodePipeline testDecoder = testStream.Codec == AtmosCodec.Eac3Joc
             ? new Eac3JocDecodePipeline(input, testStream, media.DurationSeconds, testQueue)
             : new TrueHdStreamDecodePipeline(paths, input, testStream, media.DurationSeconds, testQueue);
-        using PcmSinkOutput714 testOutput = new(
-            testQueue,
-            paths.ResolveVirtualSinkFilter(testOptions.SinkFilter),
-            testOptions.Gain);
-        Console.WriteLine($"Profile: {testProfile.Name} ({testProfile.LayoutId})");
+        using IPlayerAudioOutput testOutput = PlayerAudioOutput.Create(paths, testProfile, testQueue, testOptions.Gain, testOptions.SinkFilter);
+        Console.WriteLine($"配置： {testProfile.Name} ({testProfile.LayoutId})");
         double seconds = testOptions.StopAfterSeconds ?? 10;
         double stop = Math.Min(media.DurationSeconds, testOptions.StartSeconds + seconds);
         await testDecoder.RestartAsync(testOptions.StartSeconds, cancellation.Token);
         await testDecoder.WaitForPrebufferAsync(Math.Min(2.5, seconds), cancellation.Token);
         if (testDecoder.Failure != null) throw new InvalidOperationException(
-            "Atmos audio test decode failed.", testDecoder.Failure);
+            "音频测试解码失败。", testDecoder.Failure);
         testOutput.ResetClock(testOptions.StartSeconds);
         testOutput.Play();
         while (testOutput.MediaPositionSeconds < stop && !cancellation.IsCancellationRequested) {
             if (testDecoder.Failure != null) throw new InvalidOperationException(
-                "Atmos audio test decode failed.", testDecoder.Failure);
+                "音频测试解码失败。", testDecoder.Failure);
             if (testDecoder.IsCompleted && testQueue.BufferedFrames == 0 &&
                 testQueue.MediaPositionSeconds - testOutput.MediaPositionSeconds < .05) break;
             await Task.Delay(20, cancellation.Token);
@@ -115,7 +115,7 @@ static async Task<int> MainAsync(string[] args) {
         double finalPosition = testOutput.MediaPositionSeconds;
         double clockSkew = testOutput.ClockSkewMilliseconds;
         testOutput.Stop();
-        Console.WriteLine($"Audio test passed: {finalPosition - testOptions.StartSeconds:F3} s, " +
+        Console.WriteLine($"音频测试通过： {finalPosition - testOptions.StartSeconds:F3} s, " +
                           $"starvation={testQueue.StarvationFrames}, clock delta={clockSkew:F3} ms.");
         return 0;
     }

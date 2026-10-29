@@ -12,9 +12,12 @@ void InterleavedPcmQueue::Append(std::vector<std::int16_t>&& samples) {
     if (samples.size() % channels_ != 0) {
         throw std::runtime_error("PCM producer returned an incomplete interleaved frame");
     }
-    samples_.insert(samples_.end(),
-                    std::make_move_iterator(samples.begin()),
-                    std::make_move_iterator(samples.end()));
+    for (const auto sample : samples) samples_.push_back(static_cast<float>(sample) / 32768.0f);
+}
+void InterleavedPcmQueue::AppendFloat(std::vector<float>&& samples) {
+    if (samples.size() % channels_ != 0) throw std::runtime_error("PCM 浮点数据不是完整声道帧");
+    for (auto& sample : samples) sample = std::isfinite(sample) ? std::clamp(sample, -1.0f, 1.0f) : 0.0f;
+    samples_.insert(samples_.end(), samples.begin(), samples.end());
 }
 
 std::uint64_t InterleavedPcmQueue::EndFrame() const {
@@ -27,7 +30,7 @@ std::uint64_t InterleavedPcmQueue::FramesAvailable(const double sourcePosition) 
 }
 double InterleavedPcmQueue::Sample(const std::uint64_t frame, const std::size_t channel) const {
     if (frame < baseFrame_ || frame >= EndFrame() || channel >= channels_) return 0.0;
-    return static_cast<double>(samples_[(frame - baseFrame_) * channels_ + channel]) / 32768.0;
+    return static_cast<double>(samples_[(frame - baseFrame_) * channels_ + channel]);
 }
 void InterleavedPcmQueue::DiscardBefore(const double sourcePosition) {
     if (sourcePosition <= static_cast<double>(baseFrame_)) return;

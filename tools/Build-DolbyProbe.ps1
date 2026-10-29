@@ -30,6 +30,7 @@ $sources = @(
     'mat_pipeline.cpp',
     'multi_endpoint_renderer.cpp',
     'pcm_queue.cpp',
+    'pcm_stdin_renderer.cpp',
     'pcm_pipeline.cpp',
     'speaker_layout.cpp',
     'spatial_audio_sample.cpp',
@@ -48,7 +49,7 @@ if ($env:SAL_ASIO_SDK_ROOT) {
 }
 
 $compile = @(
-    'cl /nologo /std:c++20 /EHsc /W4 /permissive-',
+    'cl /nologo /std:c++20 /EHsc /W4 /permissive- /utf-8',
     '/DUNICODE /D_UNICODE /DNOMINMAX /DWIN32_LEAN_AND_MEAN',
     $asioFlags,
     ($sources -join ' '),

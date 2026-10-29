@@ -61,6 +61,7 @@ public sealed class PlayerPathsTests
         repository.Save(expected);
         repository.SetActive(expected.Id);
 
+        ProfileIniSerializer.Save(DefaultProfileService.PathFor(runtime), expected);
         PlayerPaths paths = new(runtime);
         ProfileDocument profile = paths.RequireActiveProfile();
 
@@ -69,15 +70,14 @@ public sealed class PlayerPathsTests
     }
 
     [Fact]
-    public void Missing_active_profile_reports_that_studio_setup_is_required()
+    public void Missing_active_profile_creates_the_dante_default_ini()
     {
         using TemporaryDirectory root = new();
         PlayerPaths paths = new(RuntimePaths.Resolve(root.Path, root.Path));
-
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
-            paths.RequireActiveProfile);
-
-        Assert.Contains("Studio", error.Message, StringComparison.OrdinalIgnoreCase);
+        var profile = paths.RequireActiveProfile();
+        Assert.Equal(DefaultProfileService.DefaultId, profile.Id);
+        Assert.Equal("Dante Virtual Soundcard", profile.Outputs[0].AsioDriverName);
+        Assert.True(File.Exists(DefaultProfileService.PathFor(paths.Runtime)));
     }
 
     [Fact]

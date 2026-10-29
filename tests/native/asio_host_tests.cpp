@@ -111,6 +111,27 @@ void Reset() {
     Require(!driver.isRunning, "ASIO left the driver running");
     driver = MockDriver{};
 }
+void DriverNameAndFloatPrecision() {
+    using dolby::AsioDriverDescriptor;
+    const std::vector<AsioDriverDescriptor> drivers = {
+        {L"Other ASIO", L"other"}, {L"Dante Virtual Soundcard", L"legacy"},
+        {L"Dante Virtual Soundcard (64x)", driverId}
+    };
+    Require(dolby::SelectAsioDriverByName(drivers, L"dante virtual soundcard") == driverId,
+            "Dante default did not prefer the explicit 64-bit ASIO registration");
+    Reject([&] { dolby::SelectAsioDriverByName(drivers, L"Dante Via"); });
+    Reset();
+    auto layout = Layout(2);
+    dolby::InterleavedPcmQueue queue(2);
+    const float quiet = 1.0f / 8388608.0f;
+    queue.AppendFloat(std::vector<float>(16, quiet));
+    {
+        dolby::AsioRenderer renderer(layout, 1);
+        renderer.Prime(queue); renderer.Start(); driver.Tick(0);
+        Require(driver.Sample(0, 0, 0) == quiet, "Cinema PCM was quantized to 16-bit before ASIO output");
+        renderer.Stop();
+    }
+}
 void DeviceInspection() {
     Reset();
     driver.outputs = 16;
@@ -361,7 +382,7 @@ DWORD GetPrivateProfileStringW(const wchar_t* section, const wchar_t* key, const
 }
 int main() {
     try {
-        DeviceInspection(); PlaybackAndDrain(); UnderrunAndChanges(); StartupFailures(); DelayAndLargeDevice(); ProfileAndQueue();
+        DriverNameAndFloatPrecision(); DeviceInspection(); PlaybackAndDrain(); UnderrunAndChanges(); StartupFailures(); DelayAndLargeDevice(); ProfileAndQueue();
         Require(eventCount == 0, "ASIO tests leaked events");
         std::cout << "ASIO mock host tests passed (65-channel playback, 128-channel profiles, lifecycle and errors)\n";
         return 0;

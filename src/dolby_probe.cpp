@@ -6,6 +6,7 @@
 #include "speaker_layout.h"
 
 #include <filesystem>
+#include <clocale>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -133,6 +134,8 @@ void PrintUsage() {
 int wmain(const int argc, wchar_t** argv) {
     using namespace dolby;
     try {
+        std::setlocale(LC_ALL, ".UTF-8");
+        SetConsoleOutputCP(CP_UTF8);
         ComApartment apartment;
         if (argc < 2) {
             PrintUsage();
@@ -140,6 +143,11 @@ int wmain(const int argc, wchar_t** argv) {
         }
 
         const std::wstring command = Lowercase(argv[1]);
+        if (command == L"render-pcm-stdin" || command == L"validate-pcm-stdin") {
+            if (argc < 3) throw std::invalid_argument("PCM 输入需要配置 INI 路径");
+            RenderPcmStdin(argv[2], argc >= 4 ? std::stod(argv[3]) : 1.0, command == L"validate-pcm-stdin");
+            return 0;
+        }
         if (command == L"list-asio-json") {
             for (const auto& driver : EnumerateAsioDrivers())
                 std::cout << "{\"name\":" << JsonString(driver.name)

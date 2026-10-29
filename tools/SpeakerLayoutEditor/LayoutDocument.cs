@@ -18,6 +18,8 @@ internal sealed class SpeakerDefinition : INotifyPropertyChanged
 
     public string Name { get => name; set => Set(ref name, value); }
 
+    public string DisplayName => DefaultProfileService.SpeakerLabel(Name);
+
     public double Azimuth { get => azimuth; set => Set(ref azimuth, value); }
 
     public double Elevation { get => elevation; set => Set(ref elevation, value); }
@@ -78,6 +80,7 @@ internal sealed class OutputRouteDefinition : INotifyPropertyChanged
 
     public OutputBackend Backend { get; set; }
     public string? AsioDriver { get; set; }
+    public string? AsioDriverName { get; set; }
     public List<int> AsioChannels { get; } = [];
     public int AsioBufferFrames { get; set; }
 
@@ -91,7 +94,7 @@ internal sealed class OutputRouteDefinition : INotifyPropertyChanged
 
     public List<string> Speakers { get; } = [];
 
-    public string SpeakersText => string.Join(", ", Speakers);
+    public string SpeakersText => string.Join(", ", Speakers.Select(DefaultProfileService.SpeakerLabel));
 
     public string ChannelMapText => string.Join(", ", Speakers.Select(
         (speaker, index) => $"{PhysicalChannelName(index)}<-{speaker}"));
@@ -115,6 +118,7 @@ internal sealed class OutputRouteDefinition : INotifyPropertyChanged
     {
         Backend = OutputBackend.Wasapi;
         AsioDriver = null;
+        AsioDriverName = null;
         AsioChannels.Clear();
         AsioBufferFrames = 0;
         ConfigureEndpoint(
@@ -207,6 +211,7 @@ internal sealed class LayoutDocument
                 DelayMilliseconds = route.DelayMilliseconds,
                 Backend = route.Backend,
                 AsioDriver = route.AsioDriver,
+                AsioDriverName = route.AsioDriverName,
                 AsioBufferFrames = route.AsioBufferFrames
             };
             output.ConfigureEndpoint(
@@ -247,6 +252,7 @@ internal sealed class LayoutDocument
             {
                 Backend = output.Backend,
                 AsioDriver = output.AsioDriver,
+                AsioDriverName = output.AsioDriverName,
                 AsioChannels = output.AsioChannels.ToList(),
                 AsioBufferFrames = output.AsioBufferFrames
             }).ToList()
@@ -282,7 +288,7 @@ internal sealed class LayoutDocument
         int targetChannelIndex)
     {
         var source = SlotFor(speakerName) ??
-            throw new InvalidDataException($"El parlante {speakerName} no tiene una salida.");
+            throw new InvalidDataException($"扬声器 {speakerName} 尚未分配输出。");
         if (targetChannelIndex < 0 || targetChannelIndex >= target.Speakers.Count)
         {
             throw new ArgumentOutOfRangeException(nameof(targetChannelIndex));

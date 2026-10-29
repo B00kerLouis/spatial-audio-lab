@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'Initialize-SpatialAudioLab.ps1') -Component Cavern
 $trueHdBinary = Join-Path $PSScriptRoot 'truehdd\truehd-stream.exe'
 $playerProject = Join-Path $PSScriptRoot 'DolbyPlayer\DolbyPlayer.csproj'
-$playerBinary = Join-Path $PSScriptRoot 'DolbyPlayer\bin\Release\net8.0-windows\SpatialAudioLab.Cinema.exe'
+$playerBinary = Join-Path $PSScriptRoot 'DolbyPlayer\bin\Release\net8.0-windows\SpatialAudioLab.Cinema.Engine.exe'
 
 if (-not (Test-Path $trueHdBinary)) {
     & (Join-Path $PSScriptRoot 'Build-TrueHdStream.ps1')
@@ -22,4 +22,6 @@ if (-not (Test-Path $mpv)) {
     Write-Warning 'mpv is missing. Install it with: winget install --id shinchiro.mpv -e'
 }
 
+& dotnet build (Join-Path $PSScriptRoot 'CinemaLauncher\CinemaLauncher.csproj') -c Release
+if ($LASTEXITCODE -ne 0) { throw '影院图形界面构建失败。' }
 Write-Host "Ready: $playerBinary"

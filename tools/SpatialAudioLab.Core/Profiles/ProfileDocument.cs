@@ -22,6 +22,7 @@ public sealed record OutputRouteDefinition(
 {
     public OutputBackend Backend { get; init; }
     public string? AsioDriver { get; init; }
+    public string? AsioDriverName { get; init; }
     public IReadOnlyList<int> AsioChannels { get; init; } = [];
     public int AsioBufferFrames { get; init; }
 }
@@ -115,8 +116,11 @@ public sealed class ProfileDocument
                 throw new InvalidDataException("Unknown output backend.");
             if (output.Backend == OutputBackend.Asio)
             {
-                if (!Guid.TryParse(output.AsioDriver, out _))
-                    throw new InvalidDataException("ASIO driver must be a CLSID.");
+                if (string.IsNullOrWhiteSpace(output.AsioDriverName) && !Guid.TryParse(output.AsioDriver, out _))
+                    throw new InvalidDataException("必须指定 ASIO 驱动名称或有效 CLSID。");
+                if (output.AsioDriverName is not null) ValidateValue(output.AsioDriverName, "ASIO 驱动名称");
+                if (!string.IsNullOrWhiteSpace(output.AsioDriver) && !Guid.TryParse(output.AsioDriver, out _))
+                    throw new InvalidDataException("ASIO 驱动 CLSID 无效。");
                 if (output.AsioBufferFrames < 0)
                     throw new InvalidDataException("ASIO buffer frames cannot be negative.");
                 if (output.AsioChannels.Count != 0 &&
@@ -125,7 +129,7 @@ public sealed class ProfileDocument
                      output.AsioChannels.Any(channel => channel < 1 || channel > output.Endpoint.ExpectedChannels)))
                     throw new InvalidDataException("ASIO mapping requires one unique physical channel per speaker within the device range.");
             }
-            else if (output.AsioDriver is not null || output.AsioChannels.Count != 0 || output.AsioBufferFrames != 0)
+            else if (output.AsioDriver is not null || output.AsioDriverName is not null || output.AsioChannels.Count != 0 || output.AsioBufferFrames != 0)
             {
                 throw new InvalidDataException("ASIO settings require the ASIO backend.");
             }

@@ -8,6 +8,7 @@ struct AsioDriverDescriptor {
     std::wstring clsid;
 };
 std::vector<AsioDriverDescriptor> EnumerateAsioDrivers();
+std::wstring SelectAsioDriverByName(const std::vector<AsioDriverDescriptor>& drivers, std::wstring_view name);
 struct AsioDeviceDescriptor {
     std::vector<std::wstring> outputNames;
     long minimumBufferFrames{}, maximumBufferFrames{}, preferredBufferFrames{}, bufferGranularity{};

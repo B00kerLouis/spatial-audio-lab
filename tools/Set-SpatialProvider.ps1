@@ -1,12 +1,12 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidateSet('Atmos', 'NativeMat', 'DtsX', 'Pcm')]
     [string]$Mode,
 
-    [string]$EndpointFilter = '1 - HISENSE (Virtual Audio Device',
+    [string]$EndpointFilter = '',
 
-    [string]$DeviceInstanceId = 'ROOT\MEDIA\0001',
+    [string]$DeviceInstanceId = '',
 
     [ValidateRange(5, 30)]
     [int]$TimeoutSeconds = 15
@@ -16,11 +16,18 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 $exe = Join-Path $repoRoot 'Engine\SpatialAudioLab.CLI.exe'
 if (-not (Test-Path $exe)) { $exe = Join-Path $repoRoot 'build\SpatialAudioLab.CLI.exe' }
 $preflight = Join-Path $PSScriptRoot 'Test-SpatialProvider.ps1'
+Import-Module (Join-Path $PSScriptRoot 'SpatialAudio.Runtime.psm1') -Force
+if (-not $EndpointFilter -or -not $DeviceInstanceId) {
+    $virtual = Find-SalVirtualEndpoint -Engine $exe
+    if (-not $EndpointFilter) { $EndpointFilter = $virtual.Endpoint.id }
+    if (-not $DeviceInstanceId) { $DeviceInstanceId = $virtual.InstanceId }
+}
+
 $atmosFormat = [Guid]'A289735D-FA3E-4E35-9D7D-B6F896ACB2E7'
 $dtsXFormat = [Guid]'10201B4A-3322-4967-BF40-2CAA9BAFCA44'
 
 if (-not (Test-Path $exe)) {
-    throw "SpatialAudioLab.CLI.exe was not found: $exe"
+    throw "找不到原生音频引擎： $exe"
 }
 
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -114,7 +121,7 @@ function Wait-WinRtOperation($Operation, [Type]$ResultType) {
             $_.GetParameters().Count -eq 1
         } | Select-Object -First 1
     if ($null -eq $asTask) {
-        throw 'Could not resolve the WinRT AsTask adapter.'
+        throw '无法加载 Windows 异步音频接口。'
     }
     $task = $asTask.MakeGenericMethod($ResultType).Invoke($null, @($Operation))
     $task.GetAwaiter().GetResult()
@@ -145,30 +152,30 @@ function Wait-SpatialPreflight {
     return $result
 }
 
-function Get-SpatialConfiguration {
+function Get-SpatialConfiguration([bool]$RequireSupported = $true) {
     $deviceId = [Windows.Media.Devices.MediaDevice]::GetDefaultAudioRenderId(
         [Windows.Media.Devices.AudioDeviceRole]::Default)
     if ([string]::IsNullOrWhiteSpace($deviceId)) {
-        throw 'Windows did not return a default render endpoint.'
+        throw 'Windows 未返回默认输出端点。'
     }
     $configuration = [Windows.Media.Audio.SpatialAudioDeviceConfiguration]::GetForDeviceId(
         $deviceId)
-    if ($null -eq $configuration -or -not $configuration.IsSpatialAudioSupported) {
-        throw "The default endpoint does not expose spatial audio: $deviceId"
+    if ($null -eq $configuration -or ($RequireSupported -and -not $configuration.IsSpatialAudioSupported)) {
+        throw "默认端点尚未提供空间音效能力： $deviceId"
     }
     [pscustomobject]@{ DeviceId = $deviceId; Configuration = $configuration }
 }
 
 function Set-WindowsSpatialFormat([Guid]$Format) {
     $spatial = Get-SpatialConfiguration
-    $operation = $spatial.Configuration.SetDefaultSpatialAudioFormatAsync($Format)
+    $operation = $spatial.Configuration.SetDefaultSpatialAudioFormatAsync($Format.ToString("D"))
     Wait-WinRtOperation $operation `
         ([Windows.Media.Audio.SetDefaultSpatialAudioFormatResult])
 }
 
 function Get-EndpointRegistrySubKey([string]$DeviceId) {
     if ($DeviceId -notmatch '(?i)\{0\.0\.0\.00000000\}\.\{(?<Endpoint>[0-9a-f-]{36})\}') {
-        throw "Could not extract the endpoint GUID from: $DeviceId"
+        throw "无法取得端点 GUID： $DeviceId"
     }
     "SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\" +
         "{$($Matches.Endpoint)}\Properties"
@@ -237,7 +244,7 @@ function Set-NativePcmDeviceFormat {
     $output = @(& $exe set-pcm714-format $EndpointFilter 2>&1 |
         ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not negotiate native PCM 7.1.4.`n$($output -join "`n")"
+        throw "无法协商原生 PCM 7.1.4 格式。`n$($output -join "`n")"
     }
     $output | ForEach-Object { if ($_ -ne '') { Write-Host $_ } }
 }
@@ -253,7 +260,7 @@ function Set-SpatialCodecDeviceFormat([string]$RequestedMode) {
     $output = @(& $exe set-codec-format $codec $EndpointFilter 2>&1 |
         ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not negotiate the $RequestedMode device and mix formats.`n" +
+        throw "无法协商 $RequestedMode 设备与混音格式。`n" +
             ($output -join "`n")
     }
     $output | ForEach-Object { if ($_ -ne '') { Write-Host $_ } }
@@ -293,11 +300,11 @@ function Wait-SpatialEndpoint {
         if ($LASTEXITCODE -eq 0) { return }
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
-    throw "The endpoint '$EndpointFilter' did not return."
+    throw "端点 '$EndpointFilter' 在重启后未恢复。"
 }
 
 function Restart-AudioServices {
-    Write-Host 'Restarting the Windows audio services.'
+    Write-Host '正在重新启动 Windows 音频服务。'
     Stop-Service Audiosrv -Force -ErrorAction Stop
     Stop-Service AudioEndpointBuilder -Force -ErrorAction Stop
     Start-Service AudioEndpointBuilder -ErrorAction Stop
@@ -309,7 +316,7 @@ function Restart-SpatialDevice {
     $restartOutput = @(& pnputil.exe /restart-device $DeviceInstanceId 2>&1 |
         ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not restart $DeviceInstanceId.`n$($restartOutput -join "`n")"
+        throw "无法重启设备 $DeviceInstanceId。`n$($restartOutput -join "`n")"
     }
     $restartOutput | ForEach-Object { if ($_ -ne '') { Write-Host $_ } }
 
@@ -320,10 +327,10 @@ function Set-SpatialRegistryFallback([string]$RequestedMode) {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw "Run PowerShell as Administrator to reconfigure the $RequestedMode provider."
+        throw "请以管理员身份运行 Studio，再配置 $RequestedMode 空间音效。"
     }
 
-    $spatial = Get-SpatialConfiguration
+    $spatial = Get-SpatialConfiguration $false
     $registrySubKey = Get-EndpointRegistrySubKey $spatial.DeviceId
     $valueNames = @(
         '{6737016f-5360-48ee-af05-e616c8ff27a7},2',
@@ -336,33 +343,39 @@ function Set-SpatialRegistryFallback([string]$RequestedMode) {
     foreach ($name in $valueNames) {
         $original[$name] = [SpatialRegistryAccess]::GetBinary($registrySubKey, $name)
     }
+    $runtime = Get-SalRuntime
+    $backup = @{}
+    foreach ($key in $valueNames) { $backup[$key] = if ($original[$key]) { [Convert]::ToBase64String($original[$key]) } else { $null } }
+    $backupPath = Join-Path $runtime.Data ('Logs\spatial-state-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')
+    @{ endpoint = $spatial.DeviceId; values = $backup } | ConvertTo-Json -Depth 4 | Set-Content $backupPath -Encoding UTF8
+    Write-Host "原始端点状态备份：$backupPath"
     $originalMode = Get-SpatialRegistryMode $original $valueNames
 
     try {
         if ($RequestedMode -eq 'Pcm') {
             Write-NativePcmRegistryState $registrySubKey $valueNames $original
-            Write-Host 'Rebuilding the audio services for native PCM 7.1.4.'
+            Write-Host '正在为原生 PCM 7.1.4 重建音频服务。'
             Restart-AudioServices
             Set-NativePcmDeviceFormat
         } elseif ($RequestedMode -eq 'NativeMat') {
-            Write-Host 'Selecting the MAT carrier before disabling Windows spatial audio.'
+            Write-Host '正在设置 MAT 载波并关闭 Windows 空间音效。'
             Set-SpatialCodecDeviceFormat $RequestedMode
             Write-NativePcmRegistryState $registrySubKey $valueNames $original
-            Write-Host 'Rebuilding the audio services for native MAT.'
+            Write-Host '正在为原生 MAT 重建音频服务。'
             Restart-AudioServices
         } else {
-            Write-Host "Disabling the current spatial provider before selecting $RequestedMode."
+            Write-Host "正在关闭当前空间音效，再切换至 $RequestedMode。"
             Write-NativePcmRegistryState $registrySubKey $valueNames $original
             Restart-AudioServices
             Set-SpatialCodecDeviceFormat $RequestedMode
             Write-SpatialRegistryState $registrySubKey $valueNames $RequestedMode
-            Write-Host "Rebuilding the audio services for $RequestedMode."
+            Write-Host "正在为 $RequestedMode 重建音频服务。"
             Restart-AudioServices
         }
 
         $verified = Wait-SpatialPreflight $RequestedMode
         if (-not $verified.Ready) {
-            Write-Warning 'The service restart was insufficient; trying device reenumeration.'
+            Write-Warning '音频服务重启后仍未就绪，正在重新枚举虚拟设备。'
             if ($RequestedMode -in @('Pcm', 'NativeMat')) {
                 Write-NativePcmRegistryState $registrySubKey $valueNames $original
             } else {
@@ -378,13 +391,13 @@ function Set-SpatialRegistryFallback([string]$RequestedMode) {
             }
             $verified = Wait-SpatialPreflight $RequestedMode
             if (-not $verified.Ready) {
-                throw "$RequestedMode did not become ready.`n$($verified.Output -join "`n")"
+                throw "$RequestedMode 未能就绪。`n$($verified.Output -join "`n")"
             }
         }
         $verified.Output | Write-Host
     } catch {
         $failure = "$_"
-        Write-Warning "$RequestedMode activation failed; restoring the previous spatial provider state."
+        Write-Warning "$RequestedMode 启用失败，正在恢复原有端点状态。"
         foreach ($name in $valueNames) {
             [SpatialRegistryAccess]::SetBinary($registrySubKey, $name, $original[$name])
         }
@@ -392,7 +405,7 @@ function Set-SpatialRegistryFallback([string]$RequestedMode) {
             Restart-AudioServices
             if ($originalMode -eq 'Pcm') { Set-NativePcmDeviceFormat }
         } catch {
-            try { Restart-SpatialDevice } catch { Write-Warning "Rollback restart failed: $_" }
+            try { Restart-SpatialDevice } catch { Write-Warning "恢复后重启设备失败： $_" }
         }
         throw $failure
     }
@@ -400,18 +413,18 @@ function Set-SpatialRegistryFallback([string]$RequestedMode) {
 
 & $exe set-default $EndpointFilter
 if ($LASTEXITCODE -ne 0) {
-    throw "Could not select '$EndpointFilter' as the default endpoint: $LASTEXITCODE"
+    throw "无法将 '$EndpointFilter' 设为默认输出： $LASTEXITCODE"
 }
 
 $alreadyReady = Invoke-SpatialPreflight $Mode
 if ($alreadyReady.Ready) {
     $alreadyReady.Output | Write-Host
     if ($Mode -eq 'NativeMat') {
-        Write-Host 'Native MAT mode is already active.'
+        Write-Host '原生 MAT 模式已启用。'
     } elseif ($Mode -eq 'Pcm') {
-        Write-Host 'Native PCM 7.1.4 mode is already active.'
+        Write-Host '原生 PCM 7.1.4 已启用。'
     } else {
-        Write-Host "$Mode spatial provider is already active."
+        Write-Host "$Mode 空间音效已启用。"
     }
     return
 }
@@ -419,30 +432,33 @@ if ($alreadyReady.Ready) {
 if ($Mode -in @('Pcm', 'NativeMat')) {
     Set-SpatialRegistryFallback $Mode
     if ($Mode -eq 'Pcm') {
-        Write-Host 'Native PCM 7.1.4 mode selected and verified.'
+        Write-Host '已选择并验证原生 PCM 7.1.4。'
     } else {
-        Write-Host 'Native MAT mode selected and verified.'
+        Write-Host '已选择并验证原生 MAT。'
     }
     return
 }
+
+# Negotiate a supported encoded carrier before asking Windows to enable its spatial provider.
+Set-SpatialCodecDeviceFormat $Mode
 
 $targetFormat = if ($Mode -eq 'Atmos') { $atmosFormat } else { $dtsXFormat }
 $result = $null
 try {
     $result = Set-WindowsSpatialFormat $targetFormat
-    Write-Host "Windows spatial format request: $($result.Status)"
+    Write-Host "Windows 空间音效请求结果： $($result.Status)"
 } catch {
-    Write-Host "Windows spatial format request failed: $_"
+    Write-Host "Windows 空间音效请求失败： $_"
 }
 
 if ($null -ne $result -and $result.Status -eq 'Succeeded') {
     $verified = Wait-SpatialPreflight $Mode
     if ($verified.Ready) {
         $verified.Output | Write-Host
-        Write-Host "$Mode spatial provider selected and verified."
+        Write-Host "已选择并验证 $Mode 空间音效。"
         return
     }
 }
 
 Set-SpatialRegistryFallback $Mode
-Write-Host "$Mode spatial provider selected and verified."
+Write-Host "已选择并验证 $Mode 空间音效。"

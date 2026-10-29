@@ -6,7 +6,7 @@ if (-not $Destination) { $Destination = Join-Path $repoRoot 'build-package\Spati
 if (Test-Path $Destination) { throw "Package stage already exists: $Destination" }
 New-Item $Destination -ItemType Directory -Force | Out-Null
 # Desktop implementations (notably WindowsBase) must replace Core runtime facades.
-foreach ($project in 'DolbyPlayer', 'SpeakerLayoutEditor') {
+foreach ($project in 'DolbyPlayer', 'CinemaLauncher', 'SpeakerLayoutEditor') {
     $published = Join-Path $repoRoot "build-publish\$project"
     & dotnet publish (Join-Path $repoRoot "tools\$project") -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $published
@@ -49,12 +49,13 @@ foreach ($file in 'LICENSE-APACHE', 'LICENSE-MIT', 'COPYRIGHT') {
     Invoke-WebRequest "https://raw.githubusercontent.com/rust-lang/rust/1.99.0/$file" -OutFile (Join-Path $licenses "Rust-$file.txt")
 }
 Copy-Item (Join-Path $repoRoot 'configs\*.ini') $examples
+Copy-Item (Join-Path $repoRoot 'configs\dante-714.ini') (Join-Path $Destination 'default.ini')
 Copy-Item (Join-Path $repoRoot 'docs\ASIO.md') $Destination
 Copy-Item (Join-Path $repoRoot 'packaging\README-WINDOWS.txt') (Join-Path $Destination 'README.txt')
 Copy-Item (Join-Path $repoRoot 'packaging\Install-Driver.ps1') (Join-Path $Destination 'Driver')
 Copy-Item (Join-Path $repoRoot 'packaging\Uninstall-Driver.ps1') (Join-Path $Destination 'Driver')
 Copy-Item (Join-Path $repoRoot 'packaging\Start-Cinema.ps1') $Destination
-foreach ($script in 'Set-SpatialProvider.ps1', 'Test-SpatialProvider.ps1', 'New-AsioLayout.py') {
+foreach ($script in 'Set-SpatialProvider.ps1', 'Test-SpatialProvider.ps1', 'New-AsioLayout.py', 'Prepare-SpatialAudio.ps1', 'Diagnose-SpatialAudio.ps1', 'SpatialAudio.Runtime.psm1', 'Open-SpatialApp.ps1') {
     Copy-Item (Join-Path $repoRoot "tools\$script") $tools
 }
 # DevCon and optional APOs use the MSVC runtime. Carry the compiler's redistributable DLLs.

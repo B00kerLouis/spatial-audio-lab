@@ -14,6 +14,8 @@ internal sealed class Pcm714Buffer {
     long starvationFrames;
     bool completed;
 
+    public bool IsCompleted { get { lock (gate) return completed; } }
+
     public double MediaPositionSeconds {
         get {
             lock (gate) {
@@ -62,7 +64,7 @@ internal sealed class Pcm714Buffer {
 
     public void Append(float[] interleaved) {
         if (interleaved.Length % Channels != 0) {
-            throw new ArgumentException("PCM 7.1.4 must contain complete 12-channel frames.", nameof(interleaved));
+            throw new ArgumentException("PCM 7.1.4 必须包含完整的 12 声道帧。", nameof(interleaved));
         }
         lock (gate) {
             samples.AddRange(interleaved);
@@ -109,7 +111,7 @@ internal sealed class Pcm714Buffer {
         while (BufferedFrames < requiredFrames) {
             cancellationToken.ThrowIfCancellationRequested();
             if (timeout.Elapsed > TimeSpan.FromSeconds(30)) {
-                throw new TimeoutException($"Timed out waiting for {requiredFrames} buffered PCM frames.");
+                throw new TimeoutException($"等待超时，需要 {requiredFrames} 帧 PCM 预缓冲。");
             }
             await Task.Delay(10, cancellationToken);
         }

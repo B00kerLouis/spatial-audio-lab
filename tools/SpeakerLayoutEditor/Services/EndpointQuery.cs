@@ -25,7 +25,7 @@ internal sealed class EndpointQuery(RuntimePaths paths)
                 JsonOptions);
             if (endpoint is null || string.IsNullOrWhiteSpace(endpoint.Id))
             {
-                throw new InvalidDataException("Engine devolvio un endpoint JSON invalido.");
+                throw new InvalidDataException("音频引擎返回了无效的设备信息。");
             }
 
             endpoints.Add(endpoint);
@@ -39,21 +39,21 @@ internal sealed class EndpointQuery(RuntimePaths paths)
         string output = await RunAsync("list-asio-json");
         return output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => JsonSerializer.Deserialize<AsioDriverDescriptor>(line, JsonOptions)
-                ?? throw new InvalidDataException("Invalid ASIO driver JSON."))
+                ?? throw new InvalidDataException("ASIO 驱动信息无效。"))
             .ToList();
     }
 
     public async Task<AsioDeviceDescriptor> InspectAsioAsync(string clsid) =>
         JsonSerializer.Deserialize<AsioDeviceDescriptor>(
             await RunAsync("asio-device-json", clsid), JsonOptions)
-        ?? throw new InvalidDataException("Invalid ASIO device JSON.");
+        ?? throw new InvalidDataException("ASIO 设备信息无效。");
 
     private async Task<string> RunAsync(params string[] arguments)
     {
         if (!File.Exists(paths.EngineExecutable))
         {
             throw new FileNotFoundException(
-                "No se encontro SpatialAudioLab Engine.",
+                "找不到 SpatialAudioLab 音频引擎。",
                 paths.EngineExecutable);
         }
 
@@ -68,7 +68,7 @@ internal sealed class EndpointQuery(RuntimePaths paths)
         };
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         using Process process = Process.Start(start) ??
-            throw new InvalidOperationException("No se pudo consultar los endpoints.");
+            throw new InvalidOperationException("无法查询音频设备。");
         Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
         Task<string> errorTask = process.StandardError.ReadToEndAsync();
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(15));
@@ -80,7 +80,7 @@ internal sealed class EndpointQuery(RuntimePaths paths)
         {
             process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync();
-            throw new TimeoutException("La consulta de audio excedio 15 segundos. Revise el driver y la conexion del dispositivo.");
+            throw new TimeoutException("音频设备查询超过 15 秒，请检查驱动与设备连接。");
         }
         string output = await outputTask;
         string error = await errorTask;

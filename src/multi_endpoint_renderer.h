@@ -26,6 +26,7 @@ public:
     explicit InterleavedPcmQueue(std::size_t channels);
 
     void Append(std::vector<std::int16_t>&& samples);
+    void AppendFloat(std::vector<float>&& samples);
     std::uint64_t EndFrame() const;
     std::uint64_t FramesAvailable(double sourcePosition) const;
     double Sample(std::uint64_t frame, std::size_t channel) const;
@@ -34,7 +35,7 @@ public:
 
 private:
     std::size_t channels_{};
-    std::vector<std::int16_t> samples_;
+    std::vector<float> samples_;
     std::uint64_t baseFrame_{};
 };
 

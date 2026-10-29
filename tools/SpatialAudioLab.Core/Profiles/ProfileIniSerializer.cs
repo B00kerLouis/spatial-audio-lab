@@ -81,7 +81,8 @@ public static class ProfileIniSerializer
             if (output.Backend == OutputBackend.Asio)
             {
                 AppendValue(text, "backend", "asio");
-                AppendValue(text, "asio_driver", output.AsioDriver!);
+                if (!string.IsNullOrWhiteSpace(output.AsioDriver)) AppendValue(text, "asio_driver", output.AsioDriver);
+                if (!string.IsNullOrWhiteSpace(output.AsioDriverName)) AppendValue(text, "asio_driver_name", output.AsioDriverName);
                 if (output.AsioChannels.Count != 0)
                     AppendValue(text, "asio_channels", string.Join(',', output.AsioChannels));
                 AppendValue(text, "asio_buffer_frames", output.AsioBufferFrames.ToString(CultureInfo.InvariantCulture));
@@ -140,13 +141,14 @@ public static class ProfileIniSerializer
         string section = $"output.{name}";
         OutputBackend backend = ReadBackend(ini, section);
         string? driver = ini.Optional(section, "asio_driver");
+        string? driverName = ini.Optional(section, "asio_driver_name");
         List<string> speakers = SplitList(ini.Required(section, "speakers"));
         List<int> channels = ReadAsioChannels(ini, section);
         return new OutputRouteDefinition(
             name,
             new EndpointIdentity(
-                (backend == OutputBackend.Asio ? ini.Optional(section, "endpoint_id") ?? "asio:" + driver : ini.Present(section, "endpoint_id")),
-                ini.Optional(section, "endpoint_name") ?? (backend == OutputBackend.Asio ? "ASIO " + driver : ini.Required(section, "endpoint_name")),
+                (backend == OutputBackend.Asio ? ini.Optional(section, "endpoint_id") ?? "asio:" + (driver ?? driverName) : ini.Present(section, "endpoint_id")),
+                ini.Optional(section, "endpoint_name") ?? (backend == OutputBackend.Asio ? "ASIO " + (driverName ?? driver) : ini.Required(section, "endpoint_name")),
                 ini.Optional(section, "container_id"),
                 ParseInt(
                     ini.Optional(section, "expected_channels") ?? (backend == OutputBackend.Asio ? Math.Max(speakers.Count, channels.DefaultIfEmpty(0).Max()).ToString(CultureInfo.InvariantCulture) : ini.Required(section, "expected_channels")),
@@ -156,6 +158,7 @@ public static class ProfileIniSerializer
         {
             Backend = backend,
             AsioDriver = driver,
+            AsioDriverName = driverName,
             AsioChannels = channels,
             AsioBufferFrames = ParseInt(ini.Optional(section, "asio_buffer_frames") ?? "0", "ASIO buffer frames")
         };

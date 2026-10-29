@@ -122,20 +122,22 @@ std::vector<float> MixCanonical714Frame(
     const std::array<float, 12>& source,
     const Canonical714Mix& mix) {
     const std::size_t destinations = ValidateMix(mix);
-    std::vector<double> accumulated(destinations);
-    for (std::size_t sourceIndex = 0; sourceIndex < source.size(); ++sourceIndex) {
-        for (std::size_t destination = 0; destination < destinations; ++destination) {
-            accumulated[destination] +=
-                static_cast<double>(source[sourceIndex]) * mix[sourceIndex][destination];
-        }
-    }
-
     std::vector<float> output(destinations);
-    for (std::size_t destination = 0; destination < destinations; ++destination) {
-        output[destination] = static_cast<float>(
-            std::clamp(accumulated[destination], -1.0, 1.0));
-    }
+    MixCanonical714Frame(source, mix, output);
     return output;
+}
+
+void MixCanonical714Frame(const std::array<float, 12>& source, const Canonical714Mix& mix, std::span<float> output) {
+    const auto destinations = ValidateMix(mix);
+    if (output.size() != destinations) throw std::invalid_argument("PCM 输出维度错误");
+    for (std::size_t destination = 0; destination < destinations; ++destination) {
+        double sum = 0;
+        for (std::size_t input = 0; input < source.size(); ++input) {
+            const auto value = std::isfinite(source[input]) ? source[input] : 0.0f;
+            sum += static_cast<double>(value) * mix[input][destination];
+        }
+        output[destination] = static_cast<float>(std::clamp(sum, -1.0, 1.0));
+    }
 }
 
 } // namespace dolby

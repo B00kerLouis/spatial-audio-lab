@@ -10,9 +10,10 @@ internal interface ISpatialProviderService
     Task ActivateAsync(BridgeMode mode);
 }
 
-internal sealed class DeferredSpatialProviderService : ISpatialProviderService
+internal sealed class WindowsSpatialProviderService(RuntimePaths paths) : ISpatialProviderService
 {
-    public Task ActivateAsync(BridgeMode mode) => Task.CompletedTask;
+    private readonly SpatialProviderController controller = new(paths);
+    public Task ActivateAsync(BridgeMode mode) => controller.PrepareAsync(mode);
 }
 
 internal sealed class BridgeProcessService
@@ -22,14 +23,14 @@ internal sealed class BridgeProcessService
         if (!File.Exists(command.Executable))
         {
             throw new FileNotFoundException(
-                "No se encontro SpatialAudioLab Engine.",
+                "找不到 SpatialAudioLab 音频引擎。",
                 command.Executable);
         }
 
         if (!File.Exists(command.Arguments[2]))
         {
             throw new FileNotFoundException(
-                "No se encontro el perfil activo.",
+                "找不到当前配置。",
                 command.Arguments[2]);
         }
 
@@ -54,7 +55,7 @@ internal sealed class BridgeProcessService
         }
 
         Process process = Process.Start(start) ??
-            throw new InvalidOperationException("No se pudo iniciar SpatialAudioLab Engine.");
+            throw new InvalidOperationException("无法启动 SpatialAudioLab 音频引擎。");
         File.WriteAllText(command.PidPath, $"{process.Id}\n", Encoding.ASCII);
         Task monitorTask = MonitorAsync(process, command);
 
@@ -78,7 +79,7 @@ internal sealed class BridgeProcessService
                 : string.Empty;
             throw new InvalidOperationException(
                 string.IsNullOrWhiteSpace(error)
-                    ? "Engine termino durante el inicio."
+                    ? "音频引擎在启动时退出。"
                     : error.Trim());
         }
     }

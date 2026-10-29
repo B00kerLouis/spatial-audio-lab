@@ -39,13 +39,13 @@ internal sealed class TrueHdStreamProtocol {
         byte[] header = new byte[StreamHeaderSize];
         await input.ReadExactlyAsync(header, cancellationToken);
         if (!header.AsSpan(0, 4).SequenceEqual("THDS"u8)) {
-            throw new InvalidDataException("Invalid TrueHD streaming protocol signature.");
+            throw new InvalidDataException("TrueHD 串流协议标识无效。");
         }
         ushort version = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(4, 2));
         ushort size = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(6, 2));
         uint flags = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(8, 4));
         if (version != 1 || size < StreamHeaderSize || (flags & 1) == 0) {
-            throw new InvalidDataException($"Unsupported THDS header: version={version}, size={size}, flags={flags}.");
+            throw new InvalidDataException($"不支持的 THDS 协议头： version={version}, size={size}, flags={flags}.");
         }
         if (size > StreamHeaderSize) await SkipAsync(size - StreamHeaderSize, cancellationToken);
     }

@@ -40,7 +40,7 @@ internal sealed class TrueHdStreamDecodePipeline : IAtmosDecodePipeline {
         long frames = (long)(Math.Min(seconds, Math.Max(0, mediaDuration - output.MediaPositionSeconds)) *
             Pcm714Buffer.SampleRate);
         while (output.BufferedFrames < frames) {
-            if (failure != null) throw new InvalidOperationException("TrueHD Atmos decoder failed.", failure);
+            if (failure != null) throw new InvalidOperationException("TrueHD 空间音频解码器失败。", failure);
             if (producer?.IsCompleted == true) break;
             cancellationToken.ThrowIfCancellationRequested();
             await Task.Delay(10, cancellationToken);
@@ -150,7 +150,7 @@ internal sealed class TrueHdStreamDecodePipeline : IAtmosDecodePipeline {
         }) start.ArgumentList.Add(argument);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
-        return Process.Start(start) ?? throw new InvalidOperationException("Could not start truehd-stream.");
+        return Process.Start(start) ?? throw new InvalidOperationException("无法启动 TrueHD 串流解码器。");
     }
 
     static async Task PumpTrackAsync(Track track, Stream output, CancellationToken cancellationToken) {

@@ -26,4 +26,6 @@ std::vector<float> MixCanonical714Frame(
     const std::array<float, 12>& source,
     const Canonical714Mix& mix);
 
+void MixCanonical714Frame(const std::array<float, 12>& source, const Canonical714Mix& mix, std::span<float> output);
+
 } // namespace dolby

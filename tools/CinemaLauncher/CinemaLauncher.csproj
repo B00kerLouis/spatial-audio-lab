@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseWPF>true</UseWPF>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>SpatialAudioLab.Cinema</AssemblyName>
+    <RootNamespace>SpatialAudioLab.Cinema</RootNamespace>
+    <Product>SpatialAudioLab Cinema 影院</Product>
+    <Description>空间音频影院</Description>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../SpatialAudioLab.Core/SpatialAudioLab.Core.csproj" /></ItemGroup>
+</Project>

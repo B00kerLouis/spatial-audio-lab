@@ -7,6 +7,7 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <cwctype>
 #include <stdexcept>
 
 #ifdef SAL_ENABLE_ASIO
@@ -83,6 +84,28 @@ std::vector<AsioDriverDescriptor> EnumerateAsioDrivers() {
     }
     return result;
 #endif
+}
+
+std::wstring SelectAsioDriverByName(const std::vector<AsioDriverDescriptor>& drivers, std::wstring_view name) {
+    const auto normalized = [](std::wstring text) {
+        std::transform(text.begin(), text.end(), text.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+        return text;
+    };
+    const auto wanted = normalized(std::wstring(name));
+    std::vector<AsioDriverDescriptor> matches;
+    for (const auto& driver : drivers) {
+        const auto actual = normalized(driver.name);
+        if (actual == wanted || (wanted == L"dante virtual soundcard" &&
+            (actual == wanted + L" (64x)" || actual == wanted + L" (x64)" || actual == wanted + L" (64-bit)")))
+            matches.push_back(driver);
+    }
+    // The process enumerates the 64-bit registry. Prefer DVS's explicit 64-bit registration.
+    if (wanted == L"dante virtual soundcard" && matches.size() > 1) {
+        std::erase_if(matches, [&](const auto& driver) { return normalized(driver.name) == wanted; });
+    }
+    if (matches.size() != 1)
+        throw std::runtime_error("未找到唯一的 ASIO 驱动。请以 ASIO 模式启动 Dante Virtual Soundcard，或在配置中指定驱动 CLSID。");
+    return matches.front().clsid;
 }
 
 AsioDeviceDescriptor InspectAsioDevice(std::wstring_view clsid) {
@@ -247,7 +270,9 @@ struct AsioRenderer::Impl {
         Impl* expected = nullptr;
         if (!active.compare_exchange_strong(expected, this))
             throw std::runtime_error("Only one ASIO renderer can be active in a process");
-        driver.Open(route.asioDriver);
+        const auto driverId = route.asioDriver.empty() || route.asioDriver == L"{00000000-0000-0000-0000-000000000000}"
+            ? SelectAsioDriverByName(EnumerateAsioDrivers(), route.asioDriverName) : route.asioDriver;
+        driver.Open(driverId);
         long inputs = 0, outputs = 0;
         Check(driver.value->getChannels(&inputs, &outputs), "getChannels");
         const auto mapping = asio::MapChannels(route.speakerIndices.size(), route.asioChannels, outputs);
@@ -429,7 +454,7 @@ void AsioRenderer::Stop() {
 std::vector<EndpointRenderStats> AsioRenderer::Stats() const {
     EndpointRenderStats stats;
     stats.routeName = impl_->layout.outputs.front().name;
-    stats.endpointName = L"ASIO " + impl_->layout.outputs.front().asioDriver;
+    stats.endpointName = L"ASIO " + (impl_->layout.outputs.front().asioDriverName.empty() ? impl_->layout.outputs.front().asioDriver : impl_->layout.outputs.front().asioDriverName);
     stats.isMaster = true;
 #ifdef SAL_ENABLE_ASIO
     stats.starvationFrames = impl_->starvation.load();
