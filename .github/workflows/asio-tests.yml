@@ -27,6 +27,12 @@ jobs:
           repository: audiosdk/asio
           ref: 496a0765b8bb9c26f764f22f9a9712a937177db2
           path: .asio-sdk
+      - name: Initialize virtual sink headers
+        shell: pwsh
+        run: |
+          git -c core.longpaths=true submodule update --init --depth 1 driver/windows-driver-samples
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Initialize-SpatialAudioLab.ps1 -Component Driver
       - name: Configure
         shell: pwsh
         run: |

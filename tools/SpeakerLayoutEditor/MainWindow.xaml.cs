@@ -586,7 +586,9 @@ public partial class MainWindow : Window {
         BridgeMeterPanel.Children.Clear();
         channelMeters.Clear();
         if (document is null) return;
-        foreach (SpeakerDefinition speaker in document.Speakers) {
+        if (document.Speakers.Count > 32)
+            BridgeMeterPanel.Children.Add(new TextBlock { Text = "Medidores: primeros 32 parlantes; todas las salidas siguen activas.", TextWrapping = TextWrapping.Wrap });
+        foreach (SpeakerDefinition speaker in document.Speakers.Take(32)) {
             ChannelMeterControl meter = new(speaker.Name);
             channelMeters.Add(speaker.Name, meter);
             BridgeMeterPanel.Children.Add(meter);
@@ -770,6 +772,11 @@ public partial class MainWindow : Window {
 
     async void TestSpeakerClick(object sender, RoutedEventArgs e) {
         if (document is null || selectedSpeaker is null || currentPath is null) return;
+        if (bridgeCommandRunning ||
+            (document.Outputs.Any(output => output.Backend == OutputBackend.Asio) && RunningBridgeModes().Count != 0)) {
+            StatusText.Text = "Detenga el puente y espere las consultas o pruebas de audio antes de probar ASIO.";
+            return;
+        }
         if (!SaveProfile(currentPath)) return;
         string executable = runtimePaths.EngineExecutable;
         if (!File.Exists(executable)) {
@@ -777,6 +784,9 @@ public partial class MainWindow : Window {
                 "Falta SpatialAudioLab.CLI.exe", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        bridgeCommandRunning = true;
+        BridgeStartButton.IsEnabled = false;
+        BridgeStopButton.IsEnabled = false;
         try {
             StatusText.Text = $"Probando {selectedSpeaker.Name}";
             ProcessStartInfo start = new(executable) {
@@ -799,6 +809,9 @@ public partial class MainWindow : Window {
             MessageBox.Show(this, error.Message, "Error de prueba",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             StatusText.Text = "Error de prueba";
+        } finally {
+            bridgeCommandRunning = false;
+            UpdateBridgeStatus();
         }
     }
 

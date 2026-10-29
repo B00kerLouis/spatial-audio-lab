@@ -1,4 +1,6 @@
 #include "layout_mix.h"
+#include "bridge_meter.h"
+#include <Windows.h>
 
 #include <algorithm>
 #include <array>
@@ -199,6 +201,32 @@ void FrameMixingCanReuseCallerOwnedBuffer() {
             "Caller-owned frame buffer was not populated");
 }
 
+void LargeLayoutMetersPreservePcmStride() {
+    SpeakerLayout layout;
+    for (unsigned channel = 0; channel < 128; ++channel)
+        layout.speakers.push_back({L"S" + std::to_wstring(channel), 0, 0, 0});
+    dolby::BridgeMeterPublisher publisher(layout, dolby::BridgeMeterMode::Pcm);
+    std::vector<std::int16_t> pcm(128 * 8, 0);
+    for (unsigned frame = 0; frame < 8; ++frame) {
+        pcm[frame * 128] = 16384;
+        pcm[frame * 128 + 31] = -8192;
+        pcm[frame * 128 + 127] = 32767;
+    }
+    publisher.Update(pcm);
+    HANDLE mapping = OpenFileMappingW(FILE_MAP_READ, FALSE, L"Local\\DolbyDecoderBridgeMetersV1");
+    Require(mapping != nullptr, "Meter shared memory was not published");
+    const auto* data = static_cast<const unsigned char*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0));
+    if (!data) { CloseHandle(mapping); throw std::runtime_error("Cannot read meter mapping"); }
+    const auto count = *reinterpret_cast<const std::uint32_t*>(data + 12);
+    const auto* peaks = reinterpret_cast<const float*>(data + 168);
+    const float first = peaks[0], last = peaks[31];
+    UnmapViewOfFile(data);
+    CloseHandle(mapping);
+    Require(count == 32, "Large layouts must retain the bounded V1 meter ABI");
+    RequireNear(first, 0.5, "Large PCM layout changed first meter stride");
+    RequireNear(last, 0.25, "Large PCM layout changed last meter stride");
+}
+
 } // namespace
 
 int main() {
@@ -211,6 +239,7 @@ int main() {
         EverySourceRowHasAtMostUnityPower();
         FrameMixingSaturatesIntegerAndFloatOutput();
         FrameMixingCanReuseCallerOwnedBuffer();
+        LargeLayoutMetersPreservePcmStride();
         std::cout << "SpatialAudioLab native layout mix tests passed\n";
         return 0;
     } catch (const std::exception& error) {

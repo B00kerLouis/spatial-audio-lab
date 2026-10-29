@@ -35,6 +35,7 @@ endif()
 if(BUILD_TESTING)
   add_executable(SpatialAudioLab.NativeTests
     tests/native/layout_mix_tests.cpp
+    src/bridge_meter.cpp
     src/audio_platform.cpp
     src/layout_mix.cpp
     src/speaker_layout.cpp

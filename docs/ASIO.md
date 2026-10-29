@@ -19,14 +19,18 @@ Studio 的 **Salidas** 页提供 ASIO 驱动选择器：
 
 应用设置时会短暂打开设备查询实际输出数、48 kHz 支持与缓冲限制，不启动音频，也不修改采样率。先停止桥接后再执行此查询。所有逻辑扬声器合并到一条 ASIO 主路由；旧路由的不同延迟不转移到合并路由，ASIO 路由延迟可在表格中设置。重选 WASAPI endpoint 会清除该路由的 ASIO 设置，恢复多个 WASAPI 设备请重新打开之前保存的配置。
 
-Studio 会保存 `backend`、`asio_driver`、`asio_channels` 和 `asio_buffer_frames`，也能导入生成器输出。Cinema 使用当前活动配置启动 PCM 桥接，因此可沿用 Studio 保存的 ASIO 配置；本次没有用真实媒体和硬件验收 Cinema 播放。
+Studio 会保存 `backend`、`asio_driver`、`asio_channels` 和 `asio_buffer_frames`，也能导入生成器输出。使用 Cinema 前先在 Studio 启动 **PCM 7.1.4** 桥接，让 Cinema 的虚拟 PCM sink 经该活动 ASIO 配置输出。源码中的旧版 `Start-DolbyPlayer.ps1` 自动桥接仍使用原来的默认布局；应保持 Studio 的 PCM 桥接运行，或传入 `-SkipBridgeSetup`。本次没有用真实媒体和硬件验收 Cinema 播放。
+既有 V1 共享仪表协议显示前 32 个逻辑扬声器；较大的布局仍输出全部声道，仪表上限不再阻止桥接启动。
+
 ## 构建
 
 需要 Windows x64、Visual Studio C++ 工具链及上游 README 列出的 SDK。另从 [Steinberg](https://www.steinberg.net/asiosdk) 获取 ASIO SDK，解压后指定包含 `common/iasiodrv.h` 的目录。SDK 不随本源码包分发。
 
 ```powershell
 $env:SAL_ASIO_SDK_ROOT = 'C:\SDKs\asiosdk'
-.\tools\Build-DolbyProbe.ps1
+git submodule update --init --depth 1 driver/windows-driver-samples
+.\tools\Initialize-SpatialAudioLab.ps1 -Component Driver
+.\tools\Build-SpatialAudioLab.ps1 -Component CLI,Studio
 ```
 
 也可使用 CMake；这是运行原生测试的入口：

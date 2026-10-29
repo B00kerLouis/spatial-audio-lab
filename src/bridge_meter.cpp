@@ -58,13 +58,15 @@ void EndWrite(BridgeMeterSharedData* data) {
 struct BridgeMeterPublisher::Impl {
     HANDLE mapping{};
     BridgeMeterSharedData* data{};
-    std::size_t channels{};
+    std::size_t channels{}, meteredChannels{};
     std::vector<double> rmsSquared;
     std::vector<double> peaks;
 
     Impl(const SpeakerLayout& layout, const BridgeMeterMode mode)
-        : channels(layout.speakers.size()), rmsSquared(channels), peaks(channels) {
-        if (channels == 0 || channels > kMaximumChannels) {
+        : channels(layout.speakers.size()), meteredChannels(std::min(channels, kMaximumChannels)),
+          rmsSquared(meteredChannels), peaks(meteredChannels) {
+        // Keep the V1 telemetry ABI while allowing larger audio layouts.
+        if (channels == 0) {
             throw std::runtime_error("Bridge meter layout has an unsupported channel count");
         }
 
@@ -82,7 +84,7 @@ struct BridgeMeterPublisher::Impl {
         BeginWrite(data);
         data->magic = kMagic;
         data->version = kVersion;
-        data->channelCount = static_cast<std::uint32_t>(channels);
+        data->channelCount = static_cast<std::uint32_t>(meteredChannels);
         data->mode = static_cast<std::uint32_t>(mode);
         data->reserved = 0;
         data->updateCounter = 0;
@@ -90,7 +92,7 @@ struct BridgeMeterPublisher::Impl {
         std::fill(std::begin(data->rms), std::end(data->rms), 0.0F);
         std::fill(std::begin(data->peak), std::end(data->peak), 0.0F);
         std::memset(data->names, 0, sizeof(data->names));
-        for (std::size_t channel = 0; channel < channels; ++channel) {
+        for (std::size_t channel = 0; channel < meteredChannels; ++channel) {
             wcsncpy_s(data->names[channel], kNameCharacters,
                       layout.speakers[channel].name.c_str(), _TRUNCATE);
         }
@@ -112,7 +114,7 @@ struct BridgeMeterPublisher::Impl {
         std::array<long double, kMaximumChannels> squareSums{};
         std::array<double, kMaximumChannels> blockPeaks{};
         for (std::size_t frame = 0; frame < frames; ++frame) {
-            for (std::size_t channel = 0; channel < channels; ++channel) {
+            for (std::size_t channel = 0; channel < meteredChannels; ++channel) {
                 const double sample = static_cast<double>(samples[frame * channels + channel]) /
                                       32768.0;
                 squareSums[channel] += sample * sample;
@@ -125,7 +127,7 @@ struct BridgeMeterPublisher::Impl {
         const double peakAlpha = std::exp(
             -static_cast<double>(frames) / (kSampleRate * kPeakTimeConstantSeconds));
         BeginWrite(data);
-        for (std::size_t channel = 0; channel < channels; ++channel) {
+        for (std::size_t channel = 0; channel < meteredChannels; ++channel) {
             const double blockMeanSquare = static_cast<double>(squareSums[channel] / frames);
             rmsSquared[channel] = rmsSquared[channel] * rmsAlpha +
                                   blockMeanSquare * (1.0 - rmsAlpha);
