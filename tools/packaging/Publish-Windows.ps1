@@ -5,7 +5,8 @@ $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if (-not $Destination) { $Destination = Join-Path $repoRoot 'build-package\SpatialAudioLab-ASIO-win-x64' }
 if (Test-Path $Destination) { throw "Package stage already exists: $Destination" }
 New-Item $Destination -ItemType Directory -Force | Out-Null
-foreach ($project in 'SpeakerLayoutEditor', 'DolbyPlayer') {
+# Desktop implementations (notably WindowsBase) must replace Core runtime facades.
+foreach ($project in 'DolbyPlayer', 'SpeakerLayoutEditor') {
     $published = Join-Path $repoRoot "build-publish\$project"
     & dotnet publish (Join-Path $repoRoot "tools\$project") -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $published

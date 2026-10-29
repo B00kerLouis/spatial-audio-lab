@@ -11,6 +11,13 @@ $required = @('SpatialAudioLab.Studio.exe', 'SpatialAudioLab.Cinema.exe', 'corec
 foreach ($file in $required) {
     if (-not (Test-Path (Join-Path $PackageRoot $file) -PathType Leaf)) { throw "Package is missing $file" }
 }
+foreach ($assembly in 'WindowsBase.dll', 'System.Drawing.dll', 'Microsoft.VisualBasic.dll') {
+    $desktop = Join-Path $repoRoot "build-publish\SpeakerLayoutEditor\$assembly"
+    $packaged = Join-Path $PackageRoot $assembly
+    if ((Get-FileHash $desktop -Algorithm SHA256).Hash -ne (Get-FileHash $packaged -Algorithm SHA256).Hash) {
+        throw "The WPF implementation was replaced by a Core runtime facade: $assembly"
+    }
+}
 if (Get-ChildItem $PackageRoot -Recurse -Include '*.pfx', '*.pvk') { throw 'Package contains private keys.' }
 # Run from a clean directory outside the checkout; no developer runtime layout is used.
 $smoke = Join-Path ([IO.Path]::GetTempPath()) "sal-package-$([guid]::NewGuid().ToString('N'))"
