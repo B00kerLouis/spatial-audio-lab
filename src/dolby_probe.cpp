@@ -1,4 +1,5 @@
 #include "audio_platform.h"
+#include "asio_renderer.h"
 #include "commands.h"
 #include "mat_capture_client.h"
 #include "multi_endpoint_renderer.h"
@@ -75,6 +76,10 @@ void PrintEndpointJson(const Endpoint& endpoint) {
 
 void PrintUsage() {
     std::wcout
+        << L"SpatialAudioLab.CLI list-asio\n"
+        << L"SpatialAudioLab.CLI list-asio-json\n"
+        << L"SpatialAudioLab.CLI asio-device-json <driver-clsid>\n"
+        << L"SpatialAudioLab.CLI list-asio-channels <driver-clsid>\n"
         << L"SpatialAudioLab.CLI list\n"
         << L"SpatialAudioLab.CLI list-endpoints\n"
         << L"SpatialAudioLab.CLI list-endpoints-json\n"
@@ -135,6 +140,37 @@ int wmain(const int argc, wchar_t** argv) {
         }
 
         const std::wstring command = Lowercase(argv[1]);
+        if (command == L"list-asio-json") {
+            for (const auto& driver : EnumerateAsioDrivers())
+                std::cout << "{\"name\":" << JsonString(driver.name)
+                          << ",\"clsid\":" << JsonString(driver.clsid) << "}\n";
+            return 0;
+        }
+        if (command == L"asio-device-json") {
+            if (argc != 3) throw std::invalid_argument("asio-device-json requires a driver CLSID");
+            const auto device = InspectAsioDevice(argv[2]);
+            std::cout << "{\"outputNames\":[";
+            for (std::size_t channel = 0; channel < device.outputNames.size(); ++channel) {
+                if (channel) std::cout << ',';
+                std::cout << JsonString(device.outputNames[channel]);
+            }
+            std::cout << "],\"minimumBufferFrames\":" << device.minimumBufferFrames
+                      << ",\"maximumBufferFrames\":" << device.maximumBufferFrames
+                      << ",\"preferredBufferFrames\":" << device.preferredBufferFrames
+                      << ",\"bufferGranularity\":" << device.bufferGranularity
+                      << ",\"supports48k\":" << (device.supports48k ? "true" : "false") << "}\n";
+            return 0;
+        }
+        if (command == L"list-asio") {
+            for (const auto& driver : EnumerateAsioDrivers())
+                std::cout << Utf8(driver.clsid) << '\t' << Utf8(driver.name) << '\n';
+            return 0;
+        }
+        if (command == L"list-asio-channels") {
+            if (argc != 3) throw std::invalid_argument("list-asio-channels requires a driver CLSID");
+            PrintAsioChannels(argv[2]);
+            return 0;
+        }
         if (command == L"list") {
             for (const auto& endpoint : EnumerateRenderEndpoints()) {
                 PrintEndpoint(endpoint);

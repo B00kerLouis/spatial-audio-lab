@@ -76,6 +76,11 @@ internal sealed class OutputRouteDefinition : INotifyPropertyChanged
         private set => Set(ref expectedChannels, value);
     }
 
+    public OutputBackend Backend { get; set; }
+    public string? AsioDriver { get; set; }
+    public List<int> AsioChannels { get; } = [];
+    public int AsioBufferFrames { get; set; }
+
     public string Endpoint => string.IsNullOrWhiteSpace(EndpointId) ? EndpointName : EndpointId;
 
     public double DelayMilliseconds
@@ -108,6 +113,10 @@ internal sealed class OutputRouteDefinition : INotifyPropertyChanged
 
     public void ConfigureEndpoint(AudioEndpointDescriptor endpoint)
     {
+        Backend = OutputBackend.Wasapi;
+        AsioDriver = null;
+        AsioChannels.Clear();
+        AsioBufferFrames = 0;
         ConfigureEndpoint(
             endpoint.Id,
             endpoint.Name,
@@ -122,6 +131,8 @@ internal sealed class OutputRouteDefinition : INotifyPropertyChanged
             throw new ArgumentOutOfRangeException(nameof(index));
         }
 
+        if (Backend == OutputBackend.Asio)
+            return $"ASIO{(AsioChannels.Count == 0 ? index + 1 : AsioChannels[index])}";
         return StandardChannelNames.TryGetValue(Speakers.Count, out string[]? names)
             ? names[index]
             : $"CH{index + 1}";
@@ -193,7 +204,10 @@ internal sealed class LayoutDocument
             OutputRouteDefinition output = new()
             {
                 Name = route.Name,
-                DelayMilliseconds = route.DelayMilliseconds
+                DelayMilliseconds = route.DelayMilliseconds,
+                Backend = route.Backend,
+                AsioDriver = route.AsioDriver,
+                AsioBufferFrames = route.AsioBufferFrames
             };
             output.ConfigureEndpoint(
                 route.Endpoint.Id,
@@ -201,6 +215,7 @@ internal sealed class LayoutDocument
                 route.Endpoint.ContainerId,
                 route.Endpoint.ExpectedChannels);
             output.Speakers.AddRange(route.Speakers);
+            output.AsioChannels.AddRange(route.AsioChannels);
             result.Outputs.Add(output);
         }
 
@@ -228,7 +243,13 @@ internal sealed class LayoutDocument
                     output.ContainerId,
                     output.ExpectedChannels),
                 output.Speakers.ToList(),
-                output.DelayMilliseconds)).ToList()
+                output.DelayMilliseconds)
+            {
+                Backend = output.Backend,
+                AsioDriver = output.AsioDriver,
+                AsioChannels = output.AsioChannels.ToList(),
+                AsioBufferFrames = output.AsioBufferFrames
+            }).ToList()
         };
     }
 

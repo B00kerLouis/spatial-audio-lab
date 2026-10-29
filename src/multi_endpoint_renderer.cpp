@@ -1,6 +1,7 @@
 #include "multi_endpoint_renderer.h"
 
 #include "audio_platform.h"
+#include "asio_renderer.h"
 
 #include <avrt.h>
 
@@ -323,47 +324,8 @@ void ObserveClock(RenderStream& stream) {
 
 } // namespace
 
-InterleavedPcmQueue::InterleavedPcmQueue(const std::size_t channels) : channels_(channels) {
-    if (channels == 0 || channels > 32) throw std::invalid_argument("Invalid PCM channel count");
-}
-
-void InterleavedPcmQueue::Append(std::vector<std::int16_t>&& samples) {
-    if (samples.size() % channels_ != 0) {
-        throw std::runtime_error("PCM producer returned an incomplete interleaved frame");
-    }
-    samples_.insert(samples_.end(),
-                    std::make_move_iterator(samples.begin()),
-                    std::make_move_iterator(samples.end()));
-}
-
-std::uint64_t InterleavedPcmQueue::EndFrame() const {
-    return baseFrame_ + samples_.size() / channels_;
-}
-
-std::uint64_t InterleavedPcmQueue::FramesAvailable(const double sourcePosition) const {
-    const double clamped = std::max(0.0, sourcePosition);
-    const std::uint64_t first = static_cast<std::uint64_t>(std::floor(clamped));
-    return first < EndFrame() ? EndFrame() - first : 0;
-}
-
-double InterleavedPcmQueue::Sample(const std::uint64_t frame, const std::size_t channel) const {
-    if (frame < baseFrame_ || frame >= EndFrame() || channel >= channels_) return 0.0;
-    return static_cast<double>(samples_[(frame - baseFrame_) * channels_ + channel]) / 32768.0;
-}
-
-void InterleavedPcmQueue::DiscardBefore(const double sourcePosition) {
-    if (sourcePosition <= static_cast<double>(baseFrame_)) return;
-    std::uint64_t frame = static_cast<std::uint64_t>(std::floor(sourcePosition));
-    if (frame > 1) --frame;
-    frame = std::min(frame, EndFrame());
-    const std::uint64_t discardFrames = frame > baseFrame_ ? frame - baseFrame_ : 0;
-    if (discardFrames < 4'800 && discardFrames != samples_.size() / channels_) return;
-    const std::size_t discardSamples = static_cast<std::size_t>(discardFrames * channels_);
-    samples_.erase(samples_.begin(), samples_.begin() + discardSamples);
-    baseFrame_ += discardFrames;
-}
-
 struct MultiEndpointRenderer::Impl {
+    std::unique_ptr<AsioRenderer> asio;
     MmcssRegistration mmcss;
     SpeakerLayout layout;
     double gain{};
@@ -380,6 +342,12 @@ struct MultiEndpointRenderer::Impl {
         : layout(sourceLayout), gain(sourceGain), latencyMode(sourceLatencyMode) {
         if (gain < 0.0 || gain > 1.0) {
             throw std::runtime_error("Multi-endpoint gain must be between 0 and 1");
+        }
+        const bool usesAsio = std::any_of(layout.outputs.begin(), layout.outputs.end(),
+            [](const auto& output) { return output.backend == OutputBackend::Asio; });
+        if (usesAsio) {
+            asio = std::make_unique<AsioRenderer>(layout, gain);
+            return;
         }
         streams.reserve(layout.outputs.size());
         events.reserve(layout.outputs.size());
@@ -502,11 +470,13 @@ MultiEndpointRenderer::~MultiEndpointRenderer() {
 }
 
 void MultiEndpointRenderer::Prime(const InterleavedPcmQueue& queue) {
+    if (impl_->asio) return impl_->asio->Prime(queue);
     if (impl_->started) throw std::runtime_error("Cannot prime a running renderer");
     for (RenderStream& stream : impl_->streams) FillStream(stream, queue, impl_->gain, false);
 }
 
 void MultiEndpointRenderer::Start() {
+    if (impl_->asio) return impl_->asio->Start();
     if (impl_->started) return;
     std::vector<std::size_t> order;
     order.reserve(impl_->streams.size());
@@ -570,6 +540,7 @@ void MultiEndpointRenderer::RecoverPhysicalOutputs(
 }
 
 void MultiEndpointRenderer::PrimeAndStart(const InterleavedPcmQueue& queue) {
+    if (impl_->asio) { Prime(queue); Start(); return; }
     const std::vector<double> sourcePositions = impl_->SourcePositions();
     try {
         Prime(queue);
@@ -583,6 +554,7 @@ void MultiEndpointRenderer::PrimeAndStart(const InterleavedPcmQueue& queue) {
 void MultiEndpointRenderer::Service(const InterleavedPcmQueue& queue,
                                     const bool countStarvation,
                                     const DWORD timeoutMilliseconds) {
+    if (impl_->asio) return impl_->asio->Service(queue, countStarvation, timeoutMilliseconds);
     if (!impl_->started) throw std::runtime_error("Renderer must be started before servicing");
     try {
         const DWORD count = static_cast<DWORD>(impl_->events.size());
@@ -607,6 +579,7 @@ void MultiEndpointRenderer::Service(const InterleavedPcmQueue& queue,
 }
 
 void MultiEndpointRenderer::DiscardConsumed(InterleavedPcmQueue& queue) const {
+    if (impl_->asio) return impl_->asio->DiscardConsumed(queue);
     double minimum = std::numeric_limits<double>::infinity();
     for (const RenderStream& stream : impl_->streams) {
         minimum = std::min(minimum, stream.sourcePosition);
@@ -616,6 +589,7 @@ void MultiEndpointRenderer::DiscardConsumed(InterleavedPcmQueue& queue) const {
 
 std::uint64_t MultiEndpointRenderer::MinimumFramesAvailable(
     const InterleavedPcmQueue& queue) const {
+    if (impl_->asio) return impl_->asio->MinimumFramesAvailable(queue);
     std::uint64_t minimum = std::numeric_limits<std::uint64_t>::max();
     for (const RenderStream& stream : impl_->streams) {
         minimum = std::min(minimum, queue.FramesAvailable(stream.sourcePosition));
@@ -624,6 +598,7 @@ std::uint64_t MultiEndpointRenderer::MinimumFramesAvailable(
 }
 
 std::uint32_t MultiEndpointRenderer::MaximumBufferFrames() const {
+    if (impl_->asio) return impl_->asio->MaximumBufferFrames();
     return std::max_element(
         impl_->streams.begin(), impl_->streams.end(),
         [](const RenderStream& first, const RenderStream& second) {
@@ -632,16 +607,19 @@ std::uint32_t MultiEndpointRenderer::MaximumBufferFrames() const {
 }
 
 bool MultiEndpointRenderer::IsDrained(const InterleavedPcmQueue& queue) const {
+    if (impl_->asio) return impl_->asio->IsDrained(queue);
     return std::all_of(impl_->streams.begin(), impl_->streams.end(), [&](const RenderStream& stream) {
         return queue.FramesAvailable(stream.sourcePosition) == 0;
     });
 }
 
 bool MultiEndpointRenderer::IsStarted() const {
+    if (impl_->asio) return impl_->asio->IsStarted();
     return impl_->started;
 }
 
 void MultiEndpointRenderer::Stop() {
+    if (impl_ && impl_->asio) return impl_->asio->Stop();
     if (!impl_ || impl_->stopped) return;
     impl_->StopStreams(true);
     impl_->stopped = true;
@@ -652,6 +630,7 @@ const SpeakerLayout& MultiEndpointRenderer::Layout() const {
 }
 
 std::vector<EndpointRenderStats> MultiEndpointRenderer::Stats() const {
+    if (impl_->asio) return impl_->asio->Stats();
     std::vector<EndpointRenderStats> result;
     result.reserve(impl_->streams.size());
     double masterSeconds = 0.0;

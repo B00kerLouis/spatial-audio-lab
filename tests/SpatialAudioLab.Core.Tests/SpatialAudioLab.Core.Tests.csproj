@@ -18,5 +18,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\tools\SpatialAudioLab.Core\SpatialAudioLab.Core.csproj" />
+    <Compile Include="..\..\tools\SpeakerLayoutEditor\LayoutDocument.cs" Link="StudioLayoutDocument.cs" />
   </ItemGroup>
 </Project>

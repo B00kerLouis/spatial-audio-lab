@@ -4,7 +4,9 @@ Experimental Windows spatial-audio platform for capturing, decoding, rendering a
 immersive audio to configurable multi-device speaker layouts.
 
 SpatialAudioLab turns a virtual Windows spatial endpoint into a configurable analog output
-distributed across one or more WASAPI devices. Profiles can describe standard layouts from 2.0
+distributed across one or more WASAPI devices, or a single multichannel ASIO device.
+This fork adds ASIO output, physical channel mapping and driver/buffer selection in Studio;
+see the [ASIO build and setup guide](docs/ASIO.md). Profiles can describe standard layouts from 2.0
 through 7.1.4, including 5.1.2, 5.1.4 and 7.1.2. Live game audio can arrive through Dolby MAT,
 DTS:X or native PCM, while Cinema renders E-AC-3 JOC and TrueHD Atmos sources in real time.
 

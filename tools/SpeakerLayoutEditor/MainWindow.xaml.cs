@@ -133,6 +133,7 @@ public partial class MainWindow : Window {
             RebuildBridgeMeters();
             SpeakerList.SelectedIndex = 0;
             StatusText.Text = "Perfil cargado";
+            UpdateAsioControls();
             RedrawMaps();
         } catch (Exception error) {
             MessageBox.Show(this, error.Message, "No se pudo abrir el perfil",
@@ -185,6 +186,11 @@ public partial class MainWindow : Window {
 
             if (document is not null) {
                 foreach (OutputRouteDefinition output in document.Outputs) {
+                    if (output.Backend == OutputBackend.Asio) {
+                        EndpointChoices.Add(new EndpointChoice(output.Endpoint,
+                            $"ASIO: {output.EndpointName}", null));
+                        continue;
+                    }
                     EndpointMatchResult match = EndpointMatcher.Match(
                         new EndpointIdentity(
                             output.EndpointId,
@@ -219,16 +225,119 @@ public partial class MainWindow : Window {
             choice.Descriptor is null) return;
         if (output.Endpoint.Equals(choice.Filter, StringComparison.OrdinalIgnoreCase)) return;
         AudioEndpointDescriptor endpoint = choice.Descriptor;
-        output.ConfigureEndpoint(
-            endpoint.Id,
-            endpoint.Name,
-            endpoint.ContainerId,
-            Math.Max(endpoint.MaximumChannels48k, output.Speakers.Count));
+        if (endpoint.MaximumChannels48k < output.Speakers.Count) {
+            StatusText.Text = "El endpoint no tiene suficientes canales para esta ruta.";
+            RebuildEndpointChoices();
+            return;
+        }
+        output.ConfigureEndpoint(endpoint);
+        RebuildPhysicalDestinationChoices();
+        UpdateAsioControls();
         if (selectedSpeaker is not null &&
             ReferenceEquals(document?.OutputFor(selectedSpeaker.Name), output)) {
             DestinationEndpointText.Text = output.Endpoint;
         }
         StatusText.Text = $"Endpoint actualizado: {output.Name}";
+    }
+
+    void UpdateAsioControls() {
+        OutputRouteDefinition? route = document?.Outputs.FirstOrDefault(
+            output => output.Backend == OutputBackend.Asio);
+        AsioChannelsText.Text = route is null ? "" : string.Join(',', route.AsioChannels);
+        AsioBufferText.Text = (route?.AsioBufferFrames ?? 0).ToString(CultureInfo.InvariantCulture);
+        if (route is not null) {
+            var drivers = AsioDriverCombo.ItemsSource as IReadOnlyList<AsioDriverDescriptor>;
+            AsioDriverDescriptor? driver = drivers?.FirstOrDefault(item =>
+                item.Clsid.Equals(route.AsioDriver, StringComparison.OrdinalIgnoreCase));
+            if (driver is null) {
+                driver = new AsioDriverDescriptor(route.EndpointName, route.AsioDriver!);
+                AsioDriverCombo.ItemsSource = (drivers ?? []).Append(driver).ToList();
+            }
+            AsioDriverCombo.SelectedItem = driver;
+            AsioStatusText.Text = $"ASIO: {route.EndpointName} · {route.ExpectedChannels} canales";
+        } else {
+            AsioStatusText.Text = "Seleccione un driver y aplique ASIO a todos los parlantes.";
+        }
+    }
+
+    async void RefreshAsioClick(object sender, RoutedEventArgs e) {
+        try {
+            var drivers = await endpointQuery.QueryAsioAsync();
+            AsioDriverCombo.ItemsSource = drivers;
+            AsioDriverCombo.SelectedIndex = drivers.Count == 0 ? -1 : 0;
+            UpdateAsioControls();
+            AsioStatusText.Text = $"{drivers.Count} drivers ASIO x64 instalados.";
+        } catch (Exception error) {
+            AsioStatusText.Text = error.Message;
+        }
+    }
+
+    async void ApplyAsioClick(object sender, RoutedEventArgs e) {
+        if (document is null || AsioDriverCombo.SelectedItem is not AsioDriverDescriptor driver) {
+            AsioStatusText.Text = "Abra un perfil y seleccione un driver ASIO.";
+            return;
+        }
+        if (bridgeCommandRunning || RunningBridgeModes().Count != 0) {
+            AsioStatusText.Text = "Detenga el puente antes de consultar o cambiar el dispositivo ASIO.";
+            return;
+        }
+        ApplyAsioButton.IsEnabled = false;
+        bridgeCommandRunning = true;
+        BridgeStartButton.IsEnabled = false;
+        BridgeStopButton.IsEnabled = false;
+        LayoutDocument targetDocument = document;
+        try {
+            if (!int.TryParse(AsioBufferText.Text, out int buffer) || buffer < 0)
+                throw new InvalidDataException("El buffer debe ser un entero no negativo.");
+            int[] channels = string.IsNullOrWhiteSpace(AsioChannelsText.Text)
+                ? Enumerable.Range(1, document.Speakers.Count).ToArray()
+                : AsioChannelsText.Text.Split(',').Select(value => int.Parse(value.Trim(), CultureInfo.InvariantCulture)).ToArray();
+            var device = await endpointQuery.InspectAsioAsync(driver.Clsid);
+            if (!ReferenceEquals(document, targetDocument))
+                throw new InvalidOperationException("El perfil cambio durante la consulta. Vuelva a aplicar ASIO.");
+            if (!device.Supports48k) throw new InvalidDataException("El driver no admite PCM a 48 kHz.");
+            if (buffer != 0 && (buffer < device.MinimumBufferFrames || buffer > device.MaximumBufferFrames ||
+                (device.BufferGranularity == -1 && (buffer & (buffer - 1)) != 0) ||
+                (device.BufferGranularity > 0 && (buffer - device.MinimumBufferFrames) % device.BufferGranularity != 0)))
+                throw new InvalidDataException($"Buffer invalido: {device.MinimumBufferFrames}..{device.MaximumBufferFrames}, granularidad {device.BufferGranularity}.");
+            OutputRouteDefinition output = new() {
+                Name = "asio", Backend = OutputBackend.Asio, AsioDriver = driver.Clsid,
+                AsioBufferFrames = buffer,
+                DelayMilliseconds = document.Outputs.FirstOrDefault(route => route.Backend == OutputBackend.Asio)?.DelayMilliseconds ?? 0
+            };
+            output.ConfigureEndpoint("asio:" + driver.Clsid, driver.Name, null, device.OutputNames.Count);
+            output.Speakers.AddRange(document.Outputs.FirstOrDefault(route => route.Backend == OutputBackend.Asio)?.Speakers
+                ?? document.Speakers.Select(speaker => speaker.Name).ToList());
+            output.AsioChannels.AddRange(channels);
+            // Validate a candidate before changing the open document.
+            ProfileDocument candidate = document.ToProfile();
+            candidate.Outputs.Clear();
+            candidate.Outputs.Add(new SpatialAudioLab.Core.Profiles.OutputRouteDefinition(
+                "asio", new EndpointIdentity("asio:" + driver.Clsid, driver.Name, null, device.OutputNames.Count),
+                output.Speakers, output.DelayMilliseconds) {
+                Backend = OutputBackend.Asio, AsioDriver = driver.Clsid,
+                AsioChannels = channels, AsioBufferFrames = buffer
+            });
+            candidate.MasterOutput = "asio";
+            candidate.Validate();
+            document.Outputs.Clear();
+            document.Outputs.Add(output);
+            document.MasterOutput = "asio";
+            OutputGrid.Items.Refresh();
+            PopulateRouteLegend();
+            RebuildPhysicalDestinationChoices();
+            RebuildEndpointChoices();
+            UpdateAsioControls();
+            if (selectedSpeaker is not null) UpdateSpeakerControls();
+            RedrawMaps();
+            AsioStatusText.Text = $"{driver.Name}: {device.OutputNames.Count} salidas, buffer preferido {device.PreferredBufferFrames}. Guarde el perfil.";
+        } catch (Exception error) {
+            AsioStatusText.Text = error.Message;
+        } finally {
+            ApplyAsioButton.IsEnabled = true;
+            bridgeCommandRunning = false;
+            UpdateBridgeStatus();
+        }
     }
 
     void RebuildPhysicalDestinationChoices() {
@@ -396,7 +505,7 @@ public partial class MainWindow : Window {
     }
 
     async void StartBridgeClick(object sender, RoutedEventArgs e) {
-        if (currentPath is null) return;
+        if (currentPath is null || bridgeCommandRunning) return;
         bool switching = RunningBridgeModes().Count != 0;
         if (!SaveProfile(currentPath)) return;
 

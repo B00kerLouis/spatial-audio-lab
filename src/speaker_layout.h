@@ -16,11 +16,17 @@ struct SpeakerDefinition {
     double trimDb{};
 };
 
+enum class OutputBackend { Wasapi, Asio };
+
 struct OutputRouteDefinition {
     std::wstring name;
     std::wstring endpointFilter;
     std::vector<std::size_t> speakerIndices;
     double delayMilliseconds{};
+    OutputBackend backend{OutputBackend::Wasapi};
+    std::wstring asioDriver;
+    std::vector<long> asioChannels; // zero-based driver channels, INI is one-based
+    long asioBufferFrames{}; // zero uses the driver preferred size
 };
 
 struct SpeakerLayout {

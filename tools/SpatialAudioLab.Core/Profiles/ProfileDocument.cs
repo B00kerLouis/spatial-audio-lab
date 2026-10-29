@@ -1,5 +1,7 @@
 namespace SpatialAudioLab.Core.Profiles;
 
+public enum OutputBackend { Wasapi, Asio }
+
 public sealed record EndpointIdentity(
     string Id,
     string FriendlyName,
@@ -16,7 +18,13 @@ public sealed record OutputRouteDefinition(
     string Name,
     EndpointIdentity Endpoint,
     IReadOnlyList<string> Speakers,
-    double DelayMilliseconds);
+    double DelayMilliseconds)
+{
+    public OutputBackend Backend { get; init; }
+    public string? AsioDriver { get; init; }
+    public IReadOnlyList<int> AsioChannels { get; init; } = [];
+    public int AsioBufferFrames { get; init; }
+}
 
 public sealed class ProfileDocument
 {
@@ -52,9 +60,9 @@ public sealed class ProfileDocument
         ValidateValue(LayoutId, "Layout ID");
         ValidateToken(MasterOutput, "Master output");
 
-        if (Speakers.Count is < 2 or > 12)
+        if (Speakers.Count < 2)
         {
-            throw new InvalidDataException("A profile must contain between 2 and 12 speakers.");
+            throw new InvalidDataException("A profile must contain at least 2 speakers.");
         }
 
         HashSet<string> speakerNames = new(StringComparer.OrdinalIgnoreCase);
@@ -89,6 +97,11 @@ public sealed class ProfileDocument
             throw new InvalidDataException("A profile must contain at least one output route.");
         }
 
+        if (Outputs.Any(output => output.Backend == OutputBackend.Asio) && Outputs.Count != 1)
+        {
+            throw new InvalidDataException("ASIO requires exactly one output route; mixed backends are not supported.");
+        }
+
         HashSet<string> outputNames = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> endpointIds = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, int> assignments = speakerNames.ToDictionary(
@@ -98,6 +111,24 @@ public sealed class ProfileDocument
 
         foreach (OutputRouteDefinition output in Outputs)
         {
+            if (!Enum.IsDefined(output.Backend))
+                throw new InvalidDataException("Unknown output backend.");
+            if (output.Backend == OutputBackend.Asio)
+            {
+                if (!Guid.TryParse(output.AsioDriver, out _))
+                    throw new InvalidDataException("ASIO driver must be a CLSID.");
+                if (output.AsioBufferFrames < 0)
+                    throw new InvalidDataException("ASIO buffer frames cannot be negative.");
+                if (output.AsioChannels.Count != 0 &&
+                    (output.AsioChannels.Count != output.Speakers.Count ||
+                     output.AsioChannels.Distinct().Count() != output.AsioChannels.Count ||
+                     output.AsioChannels.Any(channel => channel < 1 || channel > output.Endpoint.ExpectedChannels)))
+                    throw new InvalidDataException("ASIO mapping requires one unique physical channel per speaker within the device range.");
+            }
+            else if (output.AsioDriver is not null || output.AsioChannels.Count != 0 || output.AsioBufferFrames != 0)
+            {
+                throw new InvalidDataException("ASIO settings require the ASIO backend.");
+            }
             ValidateToken(output.Name, "Output name");
             if (!outputNames.Add(output.Name))
             {

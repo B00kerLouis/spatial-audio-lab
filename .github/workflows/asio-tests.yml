@@ -1,0 +1,58 @@
+name: ASIO build and portable tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/Test-AsioPortable.py --sanitize address
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [wasapi, asio]
+    steps:
+      - uses: actions/checkout@v4
+      # SDK stays outside application sources and build artifacts.
+      - name: Fetch pinned ASIO SDK headers
+        if: matrix.backend == 'asio'
+        uses: actions/checkout@v4
+        with:
+          repository: audiosdk/asio
+          ref: 496a0765b8bb9c26f764f22f9a9712a937177db2
+          path: .asio-sdk
+      - name: Configure
+        shell: pwsh
+        run: |
+          $flags = @()
+          if ('${{ matrix.backend }}' -eq 'asio') {
+            $flags += '-DSAL_ASIO_SDK_ROOT=' + (Join-Path $pwd '.asio-sdk')
+          }
+          cmake -S . -B build-asio-ci -A x64 @flags
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: cmake --build build-asio-ci --config Release --parallel
+      - run: ctest --test-dir build-asio-ci -C Release --output-on-failure
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet test tests/SpatialAudioLab.Core.Tests -c Release
+      - run: dotnet build tools/SpeakerLayoutEditor -c Release
+      - name: Verify ASIO registry query contract
+        if: matrix.backend == 'asio'
+        shell: pwsh
+        run: |
+          $json = & ./build-asio-ci/Release/SpatialAudioLab.CLI.exe list-asio-json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($line in $json) { $line | ConvertFrom-Json | Out-Null }
+      - name: Verify direct CLI build script
+        if: matrix.backend == 'asio'
+        shell: pwsh
+        run: |
+          $env:SAL_ASIO_SDK_ROOT = Join-Path $pwd '.asio-sdk'
+          ./tools/Build-DolbyProbe.ps1

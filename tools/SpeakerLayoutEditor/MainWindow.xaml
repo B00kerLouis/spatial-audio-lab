@@ -217,6 +217,7 @@
               <Grid.RowDefinitions>
                 <RowDefinition Height="34" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
               <Grid>
                 <Grid.ColumnDefinitions>
@@ -261,6 +262,21 @@
                   </DataGridTemplateColumn>
                 </DataGrid.Columns>
               </DataGrid>
+              <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                <TextBlock Text="ASIO (un dispositivo para todos los parlantes)" FontWeight="SemiBold" />
+                <DockPanel Margin="0,6,0,0">
+                  <Button DockPanel.Dock="Right" Content="Actualizar ASIO" Click="RefreshAsioClick" Margin="6,0,0,0" />
+                  <ComboBox x:Name="AsioDriverCombo" DisplayMemberPath="Name" MinWidth="140" />
+                </DockPanel>
+                <TextBlock Text="Canales fisicos (desde 1, separados por comas)" Margin="0,6,0,2" />
+                <TextBox x:Name="AsioChannelsText" ToolTip="Vacio: canales consecutivos 1..N" />
+                <DockPanel Margin="0,6,0,0">
+                  <Button DockPanel.Dock="Right" x:Name="ApplyAsioButton" Content="Usar / aplicar ASIO" Click="ApplyAsioClick" Margin="6,0,0,0" />
+                  <TextBlock Text="Buffer (0 = preferido): " VerticalAlignment="Center" />
+                  <TextBox x:Name="AsioBufferText" Text="0" MinWidth="50" />
+                </DockPanel>
+                <TextBlock x:Name="AsioStatusText" Text="Actualizar ASIO para buscar drivers x64 instalados." TextWrapping="Wrap" Margin="0,6,0,0" />
+              </StackPanel>
             </Grid>
           </TabItem>
           <TabItem Header="Puentes">

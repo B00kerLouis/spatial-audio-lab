@@ -1,6 +1,8 @@
 #include "speaker_layout.h"
 
 #include "audio_platform.h"
+#include "asio_audio.h"
+#include <limits>
 
 #include <Windows.h>
 
@@ -157,7 +159,7 @@ SpeakerLayout LoadSpeakerLayout(const std::filesystem::path& path) {
         ReadRequiredIniString(fullPath, L"layout", L"outputs"));
     const std::wstring masterName = Lowercase(
         ReadRequiredIniString(fullPath, L"layout", L"master"));
-    if (speakerNames.size() < 2 || speakerNames.size() > 12 ||
+    if (speakerNames.size() < 2 ||
         outputNames.empty() || outputNames.size() > 16) {
         throw std::runtime_error("Speaker layout has an unsupported number of speakers or outputs");
     }
@@ -189,7 +191,28 @@ SpeakerLayout LoadSpeakerLayout(const std::filesystem::path& path) {
         const std::wstring section = L"output." + outputName;
         OutputRouteDefinition output;
         output.name = outputName;
-        if (version2) {
+        const auto backend = Lowercase(ReadIniString(fullPath, section, L"backend", L"wasapi"));
+        if (backend == L"asio") {
+            output.backend = OutputBackend::Asio;
+            output.asioDriver = ReadRequiredIniString(fullPath, section, L"asio_driver");
+            output.endpointFilter = L"asio:" + output.asioDriver;
+            const auto channels = ReadIniString(fullPath, section, L"asio_channels");
+            if (!channels.empty()) {
+                for (const auto& token : SplitList(channels)) {
+                    std::size_t consumed = 0;
+                    const long channel = std::stol(token, &consumed);
+                    if (consumed != token.size() || channel < 1)
+                        throw std::runtime_error("ASIO channels must be positive one-based integers");
+                    output.asioChannels.push_back(channel - 1);
+                }
+            }
+            const double frames = ReadIniDouble(fullPath, section, L"asio_buffer_frames", 0.0);
+            if (frames < 0 || frames > std::numeric_limits<long>::max() || std::floor(frames) != frames)
+                throw std::runtime_error("Invalid ASIO buffer frame count");
+            output.asioBufferFrames = static_cast<long>(frames);
+        } else if (backend != L"wasapi") {
+            throw std::runtime_error("Output backend must be wasapi or asio");
+        } else if (version2) {
             output.endpointFilter = ReadIniString(fullPath, section, L"endpoint_id");
             if (output.endpointFilter.empty()) {
                 output.endpointFilter = ReadRequiredIniString(
@@ -220,7 +243,12 @@ SpeakerLayout LoadSpeakerLayout(const std::filesystem::path& path) {
         if (output.speakerIndices.empty()) {
             throw std::runtime_error("An output route cannot be empty");
         }
-        if (version2) {
+        if (output.backend == OutputBackend::Asio) {
+            // The actual driver capacity is checked again when opening ASIO.
+            asio::MapChannels(output.speakerIndices.size(), output.asioChannels,
+                              std::numeric_limits<long>::max());
+        }
+        if (version2 && output.backend == OutputBackend::Wasapi) {
             const double expectedChannels = ReadIniDouble(
                 fullPath, section, L"expected_channels");
             if (expectedChannels < 1.0 || expectedChannels > 32.0 ||
@@ -238,6 +266,10 @@ SpeakerLayout LoadSpeakerLayout(const std::filesystem::path& path) {
         }
         layout.outputs.push_back(std::move(output));
     }
+    if (std::any_of(layout.outputs.begin(), layout.outputs.end(), [](const auto& route) {
+            return route.backend == OutputBackend::Asio;
+        }) && layout.outputs.size() != 1)
+        throw std::runtime_error("ASIO requires one output route; mixed ASIO/WASAPI layouts are not supported");
     if (!foundMaster) throw std::runtime_error("Speaker layout master does not name an output");
     if (std::find(assigned.begin(), assigned.end(), false) != assigned.end()) {
         throw std::runtime_error("Every speaker must be assigned to exactly one output route");

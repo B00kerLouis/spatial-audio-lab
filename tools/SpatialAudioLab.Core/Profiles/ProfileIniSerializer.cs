@@ -78,6 +78,14 @@ public static class ProfileIniSerializer
         {
             text.Append('\n');
             AppendSection(text, $"output.{output.Name}");
+            if (output.Backend == OutputBackend.Asio)
+            {
+                AppendValue(text, "backend", "asio");
+                AppendValue(text, "asio_driver", output.AsioDriver!);
+                if (output.AsioChannels.Count != 0)
+                    AppendValue(text, "asio_channels", string.Join(',', output.AsioChannels));
+                AppendValue(text, "asio_buffer_frames", output.AsioBufferFrames.ToString(CultureInfo.InvariantCulture));
+            }
             AppendValue(text, "endpoint_id", output.Endpoint.Id);
             AppendValue(text, "endpoint_name", output.Endpoint.FriendlyName);
             if (!string.IsNullOrWhiteSpace(output.Endpoint.ContainerId))
@@ -130,22 +138,33 @@ public static class ProfileIniSerializer
     private static OutputRouteDefinition ReadVersion2Output(IniDocument ini, string name)
     {
         string section = $"output.{name}";
+        OutputBackend backend = ReadBackend(ini, section);
+        string? driver = ini.Optional(section, "asio_driver");
+        List<string> speakers = SplitList(ini.Required(section, "speakers"));
+        List<int> channels = ReadAsioChannels(ini, section);
         return new OutputRouteDefinition(
             name,
             new EndpointIdentity(
-                ini.Present(section, "endpoint_id"),
-                ini.Required(section, "endpoint_name"),
+                (backend == OutputBackend.Asio ? ini.Optional(section, "endpoint_id") ?? "asio:" + driver : ini.Present(section, "endpoint_id")),
+                ini.Optional(section, "endpoint_name") ?? (backend == OutputBackend.Asio ? "ASIO " + driver : ini.Required(section, "endpoint_name")),
                 ini.Optional(section, "container_id"),
                 ParseInt(
-                    ini.Required(section, "expected_channels"),
+                    ini.Optional(section, "expected_channels") ?? (backend == OutputBackend.Asio ? Math.Max(speakers.Count, channels.DefaultIfEmpty(0).Max()).ToString(CultureInfo.InvariantCulture) : ini.Required(section, "expected_channels")),
                     $"{name} expected channels")),
-            SplitList(ini.Required(section, "speakers")),
-            ParseDouble(ini.Optional(section, "delay_ms") ?? "0", $"{name} delay"));
+            speakers,
+            ParseDouble(ini.Optional(section, "delay_ms") ?? "0", $"{name} delay"))
+        {
+            Backend = backend,
+            AsioDriver = driver,
+            AsioChannels = channels,
+            AsioBufferFrames = ParseInt(ini.Optional(section, "asio_buffer_frames") ?? "0", "ASIO buffer frames")
+        };
     }
 
     private static OutputRouteDefinition ReadVersion1Output(IniDocument ini, string name)
     {
         string section = $"output.{name}";
+        if (ReadBackend(ini, section) == OutputBackend.Asio) return ReadVersion2Output(ini, name);
         List<string> speakers = SplitList(ini.Required(section, "speakers"));
         return new OutputRouteDefinition(
             name,
@@ -157,6 +176,19 @@ public static class ProfileIniSerializer
             speakers,
             ParseDouble(ini.Optional(section, "delay_ms") ?? "0", $"{name} delay"));
     }
+
+    private static OutputBackend ReadBackend(IniDocument ini, string section) =>
+        (ini.Optional(section, "backend") ?? "wasapi").ToLowerInvariant() switch
+        {
+            "wasapi" => OutputBackend.Wasapi,
+            "asio" => OutputBackend.Asio,
+            _ => throw new InvalidDataException("Output backend must be wasapi or asio.")
+        };
+
+    private static List<int> ReadAsioChannels(IniDocument ini, string section) =>
+        ini.Optional(section, "asio_channels") is { } value
+            ? SplitList(value).Select(channel => ParseInt(channel, "ASIO physical channel")).ToList()
+            : [];
 
     private static string InferLegacyLayoutId(IReadOnlyList<string> speakerNames)
     {
