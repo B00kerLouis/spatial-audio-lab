@@ -44,8 +44,8 @@ $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=B00kerLouis
 New-Item $Destination -ItemType Directory -Force | Out-Null
 $certificatePath = Join-Path $Destination 'SpatialAudioLab-Test.cer'
 Export-Certificate -Cert $cert -FilePath $certificatePath | Out-Null
-# certutil -f avoids the interactive CurrentUser Root trust dialog on hosted runners.
-& certutil.exe -user -f -addstore Root $certificatePath
+# The machine store avoids the interactive per-user Root trust warning in CI.
+& certutil.exe -f -silent -addstore Root $certificatePath
 if ($LASTEXITCODE -ne 0) { throw 'Trusting the temporary CI signing certificate failed.' }
 Write-Host 'Signing driver binaries...'
 foreach ($binary in Get-ChildItem $packageRoot -File | Where-Object { $_.Extension -in '.sys', '.dll' }) {
