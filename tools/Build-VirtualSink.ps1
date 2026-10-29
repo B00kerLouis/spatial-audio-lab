@@ -45,7 +45,7 @@ New-Item $Destination -ItemType Directory -Force | Out-Null
 $certificatePath = Join-Path $Destination 'SpatialAudioLab-Test.cer'
 Export-Certificate -Cert $cert -FilePath $certificatePath | Out-Null
 # The machine store avoids the interactive per-user Root trust warning in CI.
-& certutil.exe -f -silent -addstore Root $certificatePath
+& certutil.exe -f -addstore Root $certificatePath
 if ($LASTEXITCODE -ne 0) { throw 'Trusting the temporary CI signing certificate failed.' }
 Write-Host 'Signing driver binaries...'
 foreach ($binary in Get-ChildItem $packageRoot -File | Where-Object { $_.Extension -in '.sys', '.dll' }) {
