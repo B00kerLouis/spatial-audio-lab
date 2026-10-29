@@ -15,7 +15,7 @@ try {
 
 static async Task<int> MainAsync(string[] args) {
     if (args.Length == 1 && args[0] is "--help" or "-h") {
-        PrintUsage();
+        PrintUsage(Console.Out);
         return 0;
     }
     if (args.Length == 1 && args[0] == "--version") {
@@ -230,13 +230,14 @@ static void PrintChannelLevels(float[] pcm) {
     }
 }
 
-static void PrintUsage() {
-    Console.Error.WriteLine("SpatialAudioLab.Cinema inspect <media>");
-    Console.Error.WriteLine("SpatialAudioLab.Cinema decode-test <media> [--audio-track N] [--start seconds]");
-    Console.Error.WriteLine("SpatialAudioLab.Cinema audio-test <media> [--start seconds] [--gain 0..1] " +
+static void PrintUsage(TextWriter? writer = null) {
+    writer ??= Console.Error;
+    writer.WriteLine("SpatialAudioLab.Cinema inspect <media>");
+    writer.WriteLine("SpatialAudioLab.Cinema decode-test <media> [--audio-track N] [--start seconds]");
+    writer.WriteLine("SpatialAudioLab.Cinema audio-test <media> [--start seconds] [--gain 0..1] " +
                             "[--sink endpoint] [--stop-after seconds]");
-    Console.Error.WriteLine("SpatialAudioLab.Cinema video-test <media> [--start seconds]");
-    Console.Error.WriteLine("SpatialAudioLab.Cinema play <media> [--audio-track N] [--start seconds] [--gain 0..1] " +
+    writer.WriteLine("SpatialAudioLab.Cinema video-test <media> [--start seconds]");
+    writer.WriteLine("SpatialAudioLab.Cinema play <media> [--audio-track N] [--start seconds] [--gain 0..1] " +
                             "[--sink endpoint] [--av-delay-ms N] [--stop-after seconds]");
-    Console.Error.WriteLine("SpatialAudioLab.Cinema self-test-audio <input.eac3|input.atmos> [seconds] [gain]");
+    writer.WriteLine("SpatialAudioLab.Cinema self-test-audio <input.eac3|input.atmos> [seconds] [gain]");
 }
