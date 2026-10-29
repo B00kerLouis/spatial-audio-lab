@@ -22,6 +22,32 @@ if (Get-ChildItem $PackageRoot -Recurse -Include '*.pfx', '*.pvk') { throw 'Pack
 # Run from a clean directory outside the checkout; no developer runtime layout is used.
 $smoke = Join-Path ([IO.Path]::GetTempPath()) "sal-package-$([guid]::NewGuid().ToString('N'))"
 Copy-Item $PackageRoot $smoke -Recurse
+function Invoke-CinemaCommand {
+    param([string[]]$CommandArgs)
+    $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $smoke 'SpatialAudioLab.Cinema.exe'))
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $start.StandardErrorEncoding = [Text.Encoding]::UTF8
+    foreach ($argument in $CommandArgs) { $start.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $start
+    try {
+        [void]$process.Start()
+        $output = $process.StandardOutput.ReadToEndAsync()
+        $errors = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(30000)) { $process.Kill($true); throw 'Cinema command forwarding timed out.' }
+        $text = $output.GetAwaiter().GetResult()
+        $detail = $errors.GetAwaiter().GetResult()
+        Write-Host "Cinema command exit=$($process.ExitCode), stdout=$($text.Length) chars, stderr=$($detail.Length) chars"
+        Write-Host $text
+        if ($detail) { Write-Host $detail }
+        if ($process.ExitCode -ne 0) { throw "Cinema command failed: $detail" }
+        return $text
+    } finally { $process.Dispose() }
+}
 try {
     & (Join-Path $smoke 'Tools\truehdd\truehd-stream.exe') --version
     if ($LASTEXITCODE -ne 0) { throw 'TrueHD helper did not launch.' }
@@ -31,19 +57,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe did not launch.' }
     & (Join-Path $smoke 'Engine\SpatialAudioLab.CLI.exe') list-asio-json
     if ($LASTEXITCODE -ne 0) { throw 'ASIO-enabled CLI did not launch.' }
-    $help = @(& (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') --help)
-    $help | Write-Host
-    if ($LASTEXITCODE -ne 0 -or ($help -join "`n") -notmatch 'inspect') { throw 'Cinema command forwarding lost its help output.' }
+    $help = Invoke-CinemaCommand -CommandArgs @('--help')
+    if ($help -notmatch 'inspect') { throw 'Cinema command forwarding lost its help output.' }
     $fixture = Join-Path $repoRoot 'third_party\truehdd-src\truehd\tests\assets\fba_atmos_obj.mlp'
     $media = Join-Path $smoke 'atmos-smoke.mka'
     & (Join-Path $smoke 'Tools\ffmpeg\bin\ffmpeg.exe') -v error -y -f truehd -i $fixture -c:a copy -strict -2 $media
     if ($LASTEXITCODE -ne 0) { throw 'Creating the TrueHD container smoke input failed.' }
-    $inspection = @(& (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') inspect $media)
-    $inspection | Write-Host
-    if ($LASTEXITCODE -ne 0 -or ($inspection -join "`n") -notmatch 'TrueHdAtmos') { throw 'Cinema did not forward the real Atmos inspection output.' }
-    $decoded = @(& (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') decode-test $media)
-    $decoded | Write-Host
-    if ($LASTEXITCODE -ne 0 -or ($decoded -join "`n") -notmatch 'TrueHdAtmos') { throw 'The packaged TrueHD-to-Cinema rendering output was lost.' }
+    $inspection = Invoke-CinemaCommand -CommandArgs @('inspect', $media)
+    if ($inspection -notmatch 'TrueHdAtmos') { throw 'Cinema did not forward the real Atmos inspection output.' }
+    $decoded = Invoke-CinemaCommand -CommandArgs @('decode-test', $media)
+    if ($decoded -notmatch 'TrueHdAtmos') { throw 'The packaged TrueHD-to-Cinema rendering output was lost.' }
     $launchedAt = Get-Date
     $stdout = Join-Path $smoke 'studio.stdout.txt'
     $stderr = Join-Path $smoke 'studio.stderr.txt'
