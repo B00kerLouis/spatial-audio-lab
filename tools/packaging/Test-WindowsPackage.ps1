@@ -31,16 +31,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe did not launch.' }
     & (Join-Path $smoke 'Engine\SpatialAudioLab.CLI.exe') list-asio-json
     if ($LASTEXITCODE -ne 0) { throw 'ASIO-enabled CLI did not launch.' }
-    & (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') --help
-    if ($LASTEXITCODE -ne 0) { throw 'Self-contained Cinema did not launch.' }
+    $help = @(& (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') --help)
+    $help | Write-Host
+    if ($LASTEXITCODE -ne 0 -or ($help -join "`n") -notmatch 'inspect') { throw 'Cinema command forwarding lost its help output.' }
     $fixture = Join-Path $repoRoot 'third_party\truehdd-src\truehd\tests\assets\fba_atmos_obj.mlp'
     $media = Join-Path $smoke 'atmos-smoke.mka'
     & (Join-Path $smoke 'Tools\ffmpeg\bin\ffmpeg.exe') -v error -y -f truehd -i $fixture -c:a copy -strict -2 $media
     if ($LASTEXITCODE -ne 0) { throw 'Creating the TrueHD container smoke input failed.' }
-    & (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') inspect $media
-    if ($LASTEXITCODE -ne 0) { throw 'Cinema did not recognize the real Atmos stream.' }
-    & (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') decode-test $media
-    if ($LASTEXITCODE -ne 0) { throw 'The packaged TrueHD-to-Cinema rendering path failed.' }
+    $inspection = @(& (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') inspect $media)
+    $inspection | Write-Host
+    if ($LASTEXITCODE -ne 0 -or ($inspection -join "`n") -notmatch 'TrueHdAtmos') { throw 'Cinema did not forward the real Atmos inspection output.' }
+    $decoded = @(& (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') decode-test $media)
+    $decoded | Write-Host
+    if ($LASTEXITCODE -ne 0 -or ($decoded -join "`n") -notmatch 'TrueHdAtmos') { throw 'The packaged TrueHD-to-Cinema rendering output was lost.' }
     $launchedAt = Get-Date
     $stdout = Join-Path $smoke 'studio.stdout.txt'
     $stderr = Join-Path $smoke 'studio.stderr.txt'

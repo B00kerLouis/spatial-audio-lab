@@ -27,11 +27,18 @@ public partial class App : Application
             if (e.Args.Length > 0 && commands.Contains(e.Args[0], StringComparer.OrdinalIgnoreCase))
             {
                 ProcessStartInfo start = new(Path.Combine(paths.ApplicationRoot, "SpatialAudioLab.Cinema.Engine.exe"))
-                { UseShellExecute = false, CreateNoWindow = true };
+                { UseShellExecute = false, CreateNoWindow = false, RedirectStandardOutput = true, RedirectStandardError = true };
                 foreach (string argument in e.Args) start.ArgumentList.Add(argument);
-                using Process child = Process.Start(start) ?? throw new IOException("无法启动影院播放引擎。");
-                await child.WaitForExitAsync();
-                Shutdown(child.ExitCode);
+                ConsoleCancelEventHandler keepProxyAlive = (_, cancel) => cancel.Cancel = true;
+                Console.CancelKeyPress += keepProxyAlive;
+                try {
+                    using Process child = Process.Start(start) ?? throw new IOException("无法启动影院播放引擎。");
+                    Task stdout = child.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput());
+                    Task stderr = child.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError());
+                    await child.WaitForExitAsync();
+                    await Task.WhenAll(stdout, stderr);
+                    Shutdown(child.ExitCode);
+                } finally { Console.CancelKeyPress -= keepProxyAlive; }
                 return;
             }
             if (GetConsoleProcessList(new uint[2], 2) == 1) ShowWindow(GetConsoleWindow(), 0);
