@@ -18,3 +18,5 @@
 
 # Local ASIO SDK, never part of the application source package.
 /.asio-sdk/
+
+/tools/TrueHdStream/target/

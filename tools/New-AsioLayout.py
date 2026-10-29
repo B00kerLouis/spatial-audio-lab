@@ -8,7 +8,11 @@ import uuid
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--layout", type=Path, default=Path(__file__).resolve().parent.parent / "configs/asio-714.ini")
+    root = Path(__file__).resolve().parent.parent
+    example = root / "configs/asio-714.ini"
+    if not example.exists():
+        example = root / "Examples/asio-714.ini"
+    parser.add_argument("--layout", type=Path, default=example)
     parser.add_argument("--driver", required=True, help="CLSID from list-asio")
     parser.add_argument("--channels", help="Comma-separated, one-based physical outputs; default 1..speaker count")
     parser.add_argument("--buffer-frames", type=int, default=0, help="0 selects the driver preferred period")

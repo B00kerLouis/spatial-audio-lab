@@ -1,0 +1,18 @@
+[package]
+name = "spatial-audio-lab-truehd-stream"
+version = "0.1.0"
+edition = "2024"
+authors = ["B00kerLouis"]
+license = "Apache-2.0"
+
+[[bin]]
+name = "truehd-stream"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+truehd = { path = "../../third_party/truehdd-src/truehd" }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

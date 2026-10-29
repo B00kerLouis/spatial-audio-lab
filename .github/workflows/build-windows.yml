@@ -4,25 +4,109 @@ on:
 permissions:
   contents: read
 jobs:
-  driver:
-    runs-on: windows-2025-vs2026
-    timeout-minutes: 45
+  portable:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout driver source
+      - run: python3 tools/Test-AsioPortable.py --sanitize address
+  windows:
+    needs: portable
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned build dependencies
         shell: pwsh
         run: |
-          git -c core.longpaths=true submodule update --init --depth 1 driver/windows-driver-samples
+          git -c core.longpaths=true submodule update --init --depth 1 driver/windows-driver-samples third_party/Cavern third_party/truehdd-src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Initialize-SpatialAudioLab.ps1 -Component Driver,Cavern
+      - uses: actions/checkout@v4
+        with:
+          repository: audiosdk/asio
+          ref: 496a0765b8bb9c26f764f22f9a9712a937177db2
+          path: .asio-sdk
       - uses: microsoft/setup-msbuild@v2
         with:
           msbuild-architecture: x64
-      - name: Build and test-sign Virtual Sink
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+          components: clippy,rustfmt
+      - name: Build and test-sign complete Virtual Sink package
         shell: pwsh
         run: ./tools/Build-VirtualSink.ps1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: virtual-sink-win-x64
-          path: build-driver/
-          retention-days: 7
-          if-no-files-found: error
+      - name: Build ASIO and WASAPI engine
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded "-DSAL_ASIO_SDK_ROOT=$pwd/.asio-sdk"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-windows --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build-windows --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and test TrueHD streaming helper
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path tools/TrueHdStream/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path tools/TrueHdStream/Cargo.toml --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path tools/TrueHdStream/Cargo.toml --locked -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Build-TrueHdStream.ps1
+      - name: Build all managed applications and run tests
+        shell: pwsh
+        run: |
+          dotnet test tests/SpatialAudioLab.Core.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test tests/SpatialAudioLab.Cinema.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tests/scripts/StudioPackageLayout.Tests.ps1
+          ./tests/scripts/CinemaPackageLayout.Tests.ps1
+      - name: Publish self-contained Windows applications and runtime tools
+        shell: pwsh
+        run: ./tools/packaging/Publish-Windows.ps1
+      - name: Verify actual packaged executables outside the checkout
+        shell: pwsh
+        run: ./tools/packaging/Test-WindowsPackage.ps1 -PackageRoot "$pwd/build-package/SpatialAudioLab-ASIO-win-x64"
+      - name: Archive and publish download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $shortSha = $env:GITHUB_SHA.Substring(0, 8)
+          $tag = "asio-preview-$shortSha"
+          $archiveName = "SpatialAudioLab-ASIO-win-x64-$shortSha.zip"
+          $archive = Join-Path $pwd "build-package/$archiveName"
+          Push-Location build-package
+          try {
+            & 7z a -tzip -mx=7 $archive 'SpatialAudioLab-ASIO-win-x64' | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Creating the download archive failed.' }
+          } finally { Pop-Location }
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archiveName" | Set-Content "$archive.sha256" -Encoding ascii
+          $notes = @"
+          Complete Windows x64 ASIO developer preview, built from commit $env:GITHUB_SHA.
+
+          Includes self-contained Studio and Cinema, ASIO/WASAPI CLI, rebuilt TrueHD streaming decoder, test-signed Virtual Sink and DevCon, mpv and FFmpeg. No SDK installation is needed to run the applications.
+
+          Validation: native tests, Core/Cinema tests, TrueHD PCM/metadata streaming tests, portable ASan/UBSan tests, self-contained startup, and actual packaged TrueHD-to-Cinema rendering.
+
+          The virtual driver is test-signed and requires the development boot procedure in README.txt. Actual ASIO hardware playback is not part of the hosted-runner checks. See ASIO.md and README.txt inside the archive.
+
+          SHA-256: $hash
+          "@
+          $notesFile = Join-Path $env:RUNNER_TEMP 'spatial-audio-lab-release.txt'
+          $notes | Set-Content $notesFile -Encoding utf8NoBOM
+          gh release create $tag $archive "$archive.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "SpatialAudioLab ASIO Windows x64 ($shortSha)" --notes-file $notesFile --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing the download failed.' }
+          "Download: https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$archiveName" >> $env:GITHUB_STEP_SUMMARY

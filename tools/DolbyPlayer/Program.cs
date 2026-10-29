@@ -11,6 +11,14 @@ try {
 }
 
 static async Task<int> MainAsync(string[] args) {
+    if (args.Length == 1 && args[0] is "--help" or "-h") {
+        PrintUsage();
+        return 0;
+    }
+    if (args.Length == 1 && args[0] == "--version") {
+        Console.WriteLine($"SpatialAudioLab Cinema {typeof(PlayerPaths).Assembly.GetName().Version}");
+        return 0;
+    }
     if (args.Length < 2) {
         PrintUsage();
         return 64;

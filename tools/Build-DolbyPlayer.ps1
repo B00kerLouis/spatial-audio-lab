@@ -8,7 +8,7 @@ $playerProject = Join-Path $PSScriptRoot 'DolbyPlayer\DolbyPlayer.csproj'
 $playerBinary = Join-Path $PSScriptRoot 'DolbyPlayer\bin\Release\net8.0-windows\SpatialAudioLab.Cinema.exe'
 
 if (-not (Test-Path $trueHdBinary)) {
-    throw "The bundled streaming TrueHD decoder is missing: $trueHdBinary"
+    & (Join-Path $PSScriptRoot 'Build-TrueHdStream.ps1')
 }
 
 Write-Host 'Building SpatialAudioLab Cinema...'

@@ -76,6 +76,15 @@ flowchart LR
 Do not run games protected by kernel anti-cheat while the test-signed driver is loaded. Return to a
 normal signed-driver boot before using those titles.
 
+## Windows download
+
+Run the **Full Windows ASIO build** workflow from the Actions tab of this fork. It builds and
+checks Studio, Cinema, the ASIO/WASAPI CLI, the TrueHD streaming helper and the test-signed
+Virtual Sink, then publishes a self-contained Windows x64 ZIP and SHA-256 checksum under
+[Releases](https://github.com/B00kerLouis/spatial-audio-lab/releases). The ZIP includes mpv,
+FFmpeg and third-party notices. See `README.txt` inside the archive for the driver development
+boot procedure and first-run configuration. Hardware playback is separate from hosted CI tests.
+
 ## Build from source
 
 Clone the repository with its submodules:

@@ -13,7 +13,8 @@ param(
 )
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$exe = Join-Path $repoRoot 'build\SpatialAudioLab.CLI.exe'
+$exe = Join-Path $repoRoot 'Engine\SpatialAudioLab.CLI.exe'
+if (-not (Test-Path $exe)) { $exe = Join-Path $repoRoot 'build\SpatialAudioLab.CLI.exe' }
 $preflight = Join-Path $PSScriptRoot 'Test-SpatialProvider.ps1'
 $atmosFormat = [Guid]'A289735D-FA3E-4E35-9D7D-B6F896ACB2E7'
 $dtsXFormat = [Guid]'10201B4A-3322-4967-BF40-2CAA9BAFCA44'

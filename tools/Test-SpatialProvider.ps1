@@ -8,7 +8,8 @@ param(
 )
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$exe = Join-Path $repoRoot 'build\SpatialAudioLab.CLI.exe'
+$exe = Join-Path $repoRoot 'Engine\SpatialAudioLab.CLI.exe'
+if (-not (Test-Path $exe)) { $exe = Join-Path $repoRoot 'build\SpatialAudioLab.CLI.exe' }
 if (-not (Test-Path $exe)) {
     throw "SpatialAudioLab.CLI.exe was not found: $exe"
 }

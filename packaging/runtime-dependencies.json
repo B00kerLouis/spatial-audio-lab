@@ -1,0 +1,14 @@
+{
+  "mpv": {
+    "version": "20261021-e471496c56",
+    "url": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-x86_64-20261021-git-e471496c56.7z",
+    "sha256": "4a355f3e89c83fabc730d33fb4e759dfec747806ed2287b61a90d1681b83e8d3",
+    "source": "https://github.com/mpv-player/mpv/tree/e471496c56f0f49c133bd88b50aed62b845f1909"
+  },
+  "ffmpeg": {
+    "version": "9.0.2-essentials",
+    "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.7z",
+    "sha256": "4705843ccaaf54257c16ad90f3e952ece33c17df964ecf7bfdbb0f49c7171077",
+    "source": "https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2"
+  }
+}

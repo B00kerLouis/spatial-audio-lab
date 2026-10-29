@@ -26,6 +26,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Virtual Sink common library build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Virtual Sink package build failed.' }
 & msbuild (Join-Path $sampleRoot 'setup\devcon\devcon.vcxproj') @buildOptions
 if ($LASTEXITCODE -ne 0) { throw 'DevCon build failed.' }
+Write-Host 'Locating Virtual Sink package and signing tools...'
 $driver = Get-ChildItem $sysvad -Filter TabletAudioSample.sys -Recurse |
     Where-Object { $_.FullName -match '(?i)[\\/]package[\\/]' } | Select-Object -First 1
 if (-not $driver) { throw 'The driver package was not produced.' }
@@ -37,12 +38,16 @@ $inf2cat = Get-ChildItem $kit -Filter inf2cat.exe -Recurse | Select-Object -Firs
 $devcon = Get-ChildItem (Join-Path $sampleRoot 'setup\devcon') -Filter devcon.exe -Recurse |
     Where-Object { $_.FullName -match '(?i)[\\/]x64[\\/]Release[\\/]' } | Select-Object -First 1
 if (-not $signtool -or -not $inf2cat -or -not $devcon) { throw 'Signing tools or the compiled DevCon are missing.' }
+Write-Host 'Creating the nonexportable CI test-signing certificate...'
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=B00kerLouis SpatialAudioLab Test Driver' `
     -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy NonExportable -HashAlgorithm SHA256
 New-Item $Destination -ItemType Directory -Force | Out-Null
 $certificatePath = Join-Path $Destination 'SpatialAudioLab-Test.cer'
 Export-Certificate -Cert $cert -FilePath $certificatePath | Out-Null
-Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+# certutil -f avoids the interactive CurrentUser Root trust dialog on hosted runners.
+& certutil.exe -user -f -addstore Root $certificatePath
+if ($LASTEXITCODE -ne 0) { throw 'Trusting the temporary CI signing certificate failed.' }
+Write-Host 'Signing driver binaries...'
 foreach ($binary in Get-ChildItem $packageRoot -File | Where-Object { $_.Extension -in '.sys', '.dll' }) {
     & $signtool.FullName sign /s My /sha1 $cert.Thumbprint /fd SHA256 $binary.FullName
     if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($binary.Name)" }
