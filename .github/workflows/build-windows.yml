@@ -1,0 +1,26 @@
+name: Full Windows ASIO build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  driver:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout driver source
+        shell: pwsh
+        run: |
+          git -c core.longpaths=true submodule update --init --depth 1 driver/windows-driver-samples
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build and test-sign Virtual Sink
+        shell: pwsh
+        run: ./tools/Build-VirtualSink.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: virtual-sink-win-x64
+          path: build-driver/
+          retention-days: 7
+          if-no-files-found: error
