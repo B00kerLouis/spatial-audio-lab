@@ -34,12 +34,25 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Cinema did not recognize the real Atmos stream.' }
     & (Join-Path $smoke 'SpatialAudioLab.Cinema.exe') decode-test $media
     if ($LASTEXITCODE -ne 0) { throw 'The packaged TrueHD-to-Cinema rendering path failed.' }
-    $studio = Start-Process (Join-Path $smoke 'SpatialAudioLab.Studio.exe') -PassThru
+    $launchedAt = Get-Date
+    $stdout = Join-Path $smoke 'studio.stdout.txt'
+    $stderr = Join-Path $smoke 'studio.stderr.txt'
+    $studio = Start-Process (Join-Path $smoke 'SpatialAudioLab.Studio.exe') -PassThru `
+        -WorkingDirectory $smoke -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     try {
-        Start-Sleep -Seconds 5
-        $studio.Refresh()
+        $deadline = (Get-Date).AddSeconds(30)
+        do {
+            Start-Sleep -Seconds 1
+            $studio.Refresh()
+        } while (-not $studio.HasExited -and $studio.MainWindowTitle -notlike '*SpatialAudioLab Studio*' -and (Get-Date) -lt $deadline)
         if ($studio.HasExited -or $studio.MainWindowTitle -notlike '*SpatialAudioLab Studio*') {
-            throw 'Self-contained Studio failed to create its main window.'
+            Write-Host "Studio PID=$($studio.Id), exited=$($studio.HasExited), title=$($studio.MainWindowTitle)"
+            if ($studio.HasExited) { Write-Host "Studio exit code=$($studio.ExitCode)" }
+            Get-Content $stdout, $stderr -ErrorAction SilentlyContinue | Write-Host
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $launchedAt } -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' } |
+                Select-Object -First 8 | ForEach-Object { Write-Host $_.Message }
+            throw 'Self-contained Studio failed to create its main window within 30 seconds.'
         }
         foreach ($directory in 'Profiles', 'Logs', 'Cache') {
             if (-not (Test-Path (Join-Path $smoke "Data\$directory"))) { throw "Portable data directory was not created: $directory" }
