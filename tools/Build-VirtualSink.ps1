@@ -4,6 +4,8 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $Destination) { $Destination = Join-Path $repoRoot 'build-driver' }
 $sampleRoot = Join-Path $repoRoot 'driver\windows-driver-samples'
+& git -C $sampleRoot submodule update --init --depth 1 wil
+if ($LASTEXITCODE -ne 0) { throw 'WIL checkout failed.' }
 & (Join-Path $PSScriptRoot 'Initialize-SpatialAudioLab.ps1') -Component Driver
 # Restore only the x64 packages referenced by this pinned sample revision.
 [xml]$packages = Get-Content (Join-Path $sampleRoot 'packages.config')
@@ -17,11 +19,13 @@ $packages.Save($restoreFile)
 if ($LASTEXITCODE -ne 0) { throw 'WDK NuGet restore failed.' }
 $sysvad = Join-Path $sampleRoot 'audio\sysvad'
 $buildOptions = @('/m:1', '/t:Build', '/p:Configuration=Release', '/p:Platform=x64',
-    '/p:SpectreMitigation=false', '/p:SignMode=Off', '/v:minimal')
+    '/p:SpectreMitigation=false', '/p:SignMode=Off', '/p:PreferredToolArchitecture=x64', '/v:minimal')
 & msbuild (Join-Path $sysvad 'EndpointsCommon\EndpointsCommon.vcxproj') @buildOptions
 if ($LASTEXITCODE -ne 0) { throw 'Virtual Sink common library build failed.' }
 & msbuild (Join-Path $sysvad 'Package\package.vcxproj') @buildOptions
 if ($LASTEXITCODE -ne 0) { throw 'Virtual Sink package build failed.' }
+& msbuild (Join-Path $sampleRoot 'setup\devcon\devcon.vcxproj') @buildOptions
+if ($LASTEXITCODE -ne 0) { throw 'DevCon build failed.' }
 $driver = Get-ChildItem $sysvad -Filter TabletAudioSample.sys -Recurse |
     Where-Object { $_.FullName -match '(?i)[\\/]package[\\/]' } | Select-Object -First 1
 if (-not $driver) { throw 'The driver package was not produced.' }
@@ -30,9 +34,9 @@ $kit = Join-Path $sampleRoot 'packages\Microsoft.Windows.WDK.x64.10.0.28000.1839
 $signtool = Get-ChildItem (Join-Path $sampleRoot 'packages') -Filter signtool.exe -Recurse |
     Where-Object { $_.FullName -match '(?i)[\\/]x64[\\/]' } | Select-Object -First 1
 $inf2cat = Get-ChildItem $kit -Filter inf2cat.exe -Recurse | Select-Object -First 1
-$devcon = Get-ChildItem $kit -Filter devcon.exe -Recurse |
-    Where-Object { $_.FullName -match '(?i)[\\/]x64[\\/]' } | Select-Object -First 1
-if (-not $signtool -or -not $inf2cat -or -not $devcon) { throw 'WDK signing tools or DevCon are missing.' }
+$devcon = Get-ChildItem (Join-Path $sampleRoot 'setup\devcon') -Filter devcon.exe -Recurse |
+    Where-Object { $_.FullName -match '(?i)[\\/]x64[\\/]Release[\\/]' } | Select-Object -First 1
+if (-not $signtool -or -not $inf2cat -or -not $devcon) { throw 'Signing tools or the compiled DevCon are missing.' }
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=B00kerLouis SpatialAudioLab Test Driver' `
     -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy NonExportable -HashAlgorithm SHA256
 New-Item $Destination -ItemType Directory -Force | Out-Null
