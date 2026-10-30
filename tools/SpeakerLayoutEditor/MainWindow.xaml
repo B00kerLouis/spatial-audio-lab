@@ -282,6 +282,12 @@
           <TabItem Header="实时桥接">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="8,18,8,8">
+                <TextBlock Text="Windows 捕获端点（选择 HISENSE 虚拟声卡）" TextWrapping="Wrap" />
+                <DockPanel Margin="0,6,0,4">
+                  <Button DockPanel.Dock="Right" Content="刷新" Click="RefreshEndpointsClick" Margin="6,0,0,0" />
+                  <ComboBox x:Name="VirtualEndpointCombo" DisplayMemberPath="Name" SelectionChanged="VirtualEndpointSelectionChanged" MinWidth="100" />
+                </DockPanel>
+                <TextBlock x:Name="VirtualEndpointStatus" Text="自动识别 HISENSE 虚拟端点；手动选择后会保存。" TextWrapping="Wrap" Margin="0,0,0,16" />
                 <Grid Margin="0,0,0,18">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

@@ -8,6 +8,10 @@ $log = Join-Path $runtime.Data 'Logs\spatial-audio-diagnostics.txt'
 Start-Transcript -Path $log -Force | Out-Null
 try {
     Write-Host 'SpatialAudioLab 空间音效诊断'
+    Write-Host '已加载的音频端点（含容器及 48k 声道能力）：'
+    & $runtime.Engine list-endpoints-json
+    Write-Host 'SysVAD PnP 根设备：'
+    & (Get-Module SpatialAudio.Runtime) { Get-SalVirtualDevices | Format-List }
     Get-AppxPackage | Where-Object { $_.Name -match '(?i)Dolby.*Access|DTS.*(Sound|Unbound)' } | ForEach-Object {
         $_ | Select-Object Name,Version,Status,PackageFamilyName | Format-List
         if ($RepairAppRegistration) {
@@ -17,6 +21,7 @@ try {
     }
     $virtual = Find-SalVirtualEndpoint -Engine $runtime.Engine
     Write-Host "目标端点：$($virtual.Endpoint.name)"
+    Write-Host "识别方式：$($virtual.Selection)，设备实例：$($virtual.InstanceId)"
     & $runtime.Engine device-format $virtual.Endpoint.id
     & $runtime.Engine jack-info $virtual.Endpoint.id
     Add-Type -AssemblyName System.Runtime.WindowsRuntime

@@ -3,6 +3,8 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -69,6 +71,7 @@ public partial class MainWindow : Window {
     bool updatingEndpointChoices;
     bool bridgeCommandRunning;
     bool bridgeModeSelectionInitialized;
+    bool updatingVirtualEndpoint;
     public ObservableCollection<EndpointChoice> EndpointChoices { get; } = [];
 
     public MainWindow() {
@@ -154,6 +157,7 @@ public partial class MainWindow : Window {
             activeEndpoints.Sort((first, second) =>
                 StringComparer.CurrentCultureIgnoreCase.Compare(first.Name, second.Name));
             RebuildEndpointChoices();
+            RebuildVirtualEndpointChoices();
             StatusText.Text = document is null
                 ? $"需要初始化扬声器配置 · " +
                   $"{activeEndpoints.Count} 个可用音频设备"
@@ -166,6 +170,44 @@ public partial class MainWindow : Window {
                 : $"设备刷新失败： {error.Message}";
         } finally {
             RefreshEndpointsButton.IsEnabled = true;
+        }
+    }
+
+    void RebuildVirtualEndpointChoices() {
+        updatingVirtualEndpoint = true;
+        try {
+            VirtualEndpointCombo.ItemsSource = activeEndpoints.ToList();
+            string settingsPath = IOPath.Combine(runtimePaths.DataRoot, "product-settings.json");
+            JsonObject settings = File.Exists(settingsPath)
+                ? JsonNode.Parse(File.ReadAllText(settingsPath))?.AsObject() ?? new() : new();
+            string? savedId = settings["virtualSinkEndpointId"]?.GetValue<string>();
+            AudioEndpointDescriptor? selected = activeEndpoints.FirstOrDefault(endpoint => endpoint.Id.Equals(savedId, StringComparison.OrdinalIgnoreCase));
+            bool pinned = settings["virtualSinkPinned"]?.GetValue<bool>() == true;
+            if (selected is null && !pinned) {
+                var known = activeEndpoints.Where(endpoint => Regex.IsMatch(endpoint.Name,
+                    "SpatialAudioLab Virtual Sink|HISENSE.*Virtual Audio|Virtual Audio.*HISENSE", RegexOptions.IgnoreCase)).ToList();
+                if (known.Count == 1) selected = known[0];
+            }
+            VirtualEndpointCombo.SelectedItem = selected;
+            VirtualEndpointStatus.Text = selected is null
+                ? "请选择 HISENSE 虚拟播放端点；这里是 Windows 输入来源，Dante 输出在“输出”页设置。"
+                : $"已识别：{selected.Name} · 48k 最大 {selected.MaximumChannels48k} 声道";
+        } finally { updatingVirtualEndpoint = false; }
+    }
+
+    void VirtualEndpointSelectionChanged(object sender, SelectionChangedEventArgs e) {
+        if (updatingVirtualEndpoint || VirtualEndpointCombo.SelectedItem is not AudioEndpointDescriptor endpoint) return;
+        try {
+            string settingsPath = IOPath.Combine(runtimePaths.DataRoot, "product-settings.json");
+            JsonObject settings = File.Exists(settingsPath)
+                ? JsonNode.Parse(File.ReadAllText(settingsPath))?.AsObject() ?? new() : new();
+            settings["virtualSinkEndpointId"] = endpoint.Id;
+            settings["virtualSinkFriendlyName"] = endpoint.Name;
+            settings["virtualSinkPinned"] = true;
+            File.WriteAllText(settingsPath, settings.ToJsonString(new() { WriteIndented = true }));
+            VirtualEndpointStatus.Text = $"已保存 Windows 捕获端点：{endpoint.Name}";
+        } catch (Exception error) {
+            MessageBox.Show(this, error.Message, "无法保存捕获端点", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

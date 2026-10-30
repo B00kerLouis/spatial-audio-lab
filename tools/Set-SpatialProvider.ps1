@@ -17,7 +17,7 @@ $exe = Join-Path $repoRoot 'Engine\SpatialAudioLab.CLI.exe'
 if (-not (Test-Path $exe)) { $exe = Join-Path $repoRoot 'build\SpatialAudioLab.CLI.exe' }
 $preflight = Join-Path $PSScriptRoot 'Test-SpatialProvider.ps1'
 Import-Module (Join-Path $PSScriptRoot 'SpatialAudio.Runtime.psm1') -Force
-if (-not $EndpointFilter -or -not $DeviceInstanceId) {
+if (-not $EndpointFilter) {
     $virtual = Find-SalVirtualEndpoint -Engine $exe
     if (-not $EndpointFilter) { $EndpointFilter = $virtual.Endpoint.id }
     if (-not $DeviceInstanceId) { $DeviceInstanceId = $virtual.InstanceId }
@@ -313,6 +313,9 @@ function Restart-AudioServices {
 }
 
 function Restart-SpatialDevice {
+    if (-not $DeviceInstanceId) {
+        throw '端点已识别，但无法确认其 SysVAD PnP 实例；为避免重启其他设备，已停止设备重枚举。请查看空间音效诊断日志。'
+    }
     $restartOutput = @(& pnputil.exe /restart-device $DeviceInstanceId 2>&1 |
         ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) {

@@ -8,8 +8,16 @@ $runtime = Get-SalRuntime
 $virtual = Find-SalVirtualEndpoint -Engine $runtime.Engine
 Write-Host "虚拟端点：$($virtual.Endpoint.name) [$($virtual.Endpoint.id)]"
 Write-Host "设备实例：$($virtual.InstanceId)"
+Write-Host "识别方式：$($virtual.Selection)"
+if (-not $virtual.InstanceId) { Write-Host '端点已识别；PnP 实例不可用时仍可配置端点，但不会重启未经确认的设备。' }
 $settingsPath = Join-Path $runtime.Data 'product-settings.json'
-$settings = @{ virtualSinkEndpointId = $virtual.Endpoint.id; virtualSinkFriendlyName = $virtual.Endpoint.name }
+$settings = @{}
+if (Test-Path $settingsPath) {
+    $existing = Get-Content $settingsPath -Raw | ConvertFrom-Json
+    foreach ($property in $existing.PSObject.Properties) { $settings[$property.Name] = $property.Value }
+}
+$settings.virtualSinkEndpointId = $virtual.Endpoint.id
+$settings.virtualSinkFriendlyName = $virtual.Endpoint.name
 $settings | ConvertTo-Json | Set-Content $settingsPath -Encoding UTF8
 if ($Mode -eq 'Atmos' -and -not (Get-AppxPackage -Name '*DolbyAccess*')) {
     throw '当前用户尚未安装 Dolby Access。请安装并完成应用内配置，然后重试。'

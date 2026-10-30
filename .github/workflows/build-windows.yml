@@ -44,6 +44,9 @@ jobs:
       - name: Build and test-sign complete Virtual Sink package
         shell: pwsh
         run: ./tools/Build-VirtualSink.ps1
+      - name: Prepare Microsoft driver signing submission materials
+        shell: pwsh
+        run: ./tools/packaging/New-DriverSubmission.ps1
       - name: Build ASIO and WASAPI engine
         shell: pwsh
         run: |
@@ -72,6 +75,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./tests/scripts/StudioPackageLayout.Tests.ps1
           ./tests/scripts/CinemaPackageLayout.Tests.ps1
+          ./tests/scripts/VirtualEndpoint.Tests.ps1
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tests/scripts/VirtualEndpoint.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 endpoint discovery regression failed.' }
       - name: Publish self-contained Windows applications and runtime tools
         shell: pwsh
         run: ./tools/packaging/Publish-Windows.ps1
@@ -94,6 +100,11 @@ jobs:
           } finally { Pop-Location }
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $archiveName" | Set-Content "$archive.sha256" -Encoding ascii
+          $submission = Join-Path $pwd "build-package/SpatialAudioLab-DriverSubmission-$shortSha.zip"
+          & 7z a -tzip -mx=7 $submission './build-submission/*' | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Archiving signing submission materials failed.' }
+          $submissionHash = (Get-FileHash $submission -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$submissionHash  $([IO.Path]::GetFileName($submission))" | Set-Content "$submission.sha256" -Encoding ascii
           $notes = @"
           Complete Windows x64 ASIO developer preview, built from commit $env:GITHUB_SHA.
 
@@ -103,10 +114,12 @@ jobs:
 
           The virtual driver is test-signed and requires the development boot procedure in README.txt. Actual ASIO hardware playback is not part of the hosted-runner checks. See ASIO.md and README.txt inside the archive.
 
+          Includes the HISENSE virtual-endpoint discovery fix and saved Windows capture-endpoint selection in Studio. DriverSubmission is an unsigned submission CAB with test-signed driver payload and symbols, NOT a Microsoft-signed driver. Partner Center publisher credentials and EV signing are still required.
+
           SHA-256: $hash
           "@
           $notesFile = Join-Path $env:RUNNER_TEMP 'spatial-audio-lab-release.txt'
           $notes | Set-Content $notesFile -Encoding utf8NoBOM
-          gh release create $tag $archive "$archive.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "SpatialAudioLab ASIO Windows x64 ($shortSha)" --notes-file $notesFile --prerelease
+          gh release create $tag $archive "$archive.sha256" $submission "$submission.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "SpatialAudioLab ASIO Windows x64 ($shortSha)" --notes-file $notesFile --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'Publishing the download failed.' }
           "Download: https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$archiveName" >> $env:GITHUB_STEP_SUMMARY

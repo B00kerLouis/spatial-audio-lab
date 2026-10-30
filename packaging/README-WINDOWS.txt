@@ -22,6 +22,10 @@ SpatialAudioLab 空间音频工作室与影院 · 简体中文版 · Windows x64
    Cinema.Engine.exe 是命令行播放引擎，日常请打开 Cinema.exe。
 
 游戏实时捕获与 Windows 空间音效
+截图中的“1 - HISENSE (Virtual Audio Device (WDM) - Tablet Sample)”就是可用的虚拟捕获端点。
+新版不再要求只有一个 SysVAD PnP 根设备才能识别它。若自动识别有歧义，打开 Studio
+“实时桥接”页，在“Windows 捕获端点”中选择 HISENSE；选择会保存并在下次启动时使用。
+“输出”页继续选择 Dante ASIO，捕获端点和物理输出是两个独立设置。
 此功能需安装包内 Virtual Sink，并安装／配置相应的 Dolby Access 或
 DTS Sound Unbound。它们应作用于 SpatialAudioLab 虚拟端点，ASIO Dante 用作
 软件内部的物理输出。Studio 的启动按钮现在会实际检测、选择和验证空间音效；
@@ -36,6 +40,8 @@ Secure Boot、BCD 或 BitLocker。实时游戏桥接请以管理员身份运行 
 Driver/Uninstall-Driver.ps1 移除驱动及测试证书，并恢复正常启动。
 
 诊断与边界
+GitHub Release 中 DriverSubmission ZIP 是提交微软签名所需的 CAB、PDB 与文件清单，
+尚未经过 EV 签名／微软返回签名，不能用它宣称免 F7 正常启动。详见 Driver/DRIVER-SIGNING.md。
 真实 Dante 网络时钟、硬件播放、Dolby/DTS 应用内激活及长期稳定性需在目标机复测。
 影院原生输出时钟以已渲染 PCM 进度及设备延迟估计，未声称测得硬件时钟偏差。
 TrueHD 后端仍使用通过回归的公开源码版本。ISF 与多 metadata 时间块会明确报告

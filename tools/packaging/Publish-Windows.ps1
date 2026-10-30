@@ -54,6 +54,7 @@ Copy-Item (Join-Path $repoRoot 'docs\ASIO.md') $Destination
 Copy-Item (Join-Path $repoRoot 'packaging\README-WINDOWS.txt') (Join-Path $Destination 'README.txt')
 Copy-Item (Join-Path $repoRoot 'packaging\Install-Driver.ps1') (Join-Path $Destination 'Driver')
 Copy-Item (Join-Path $repoRoot 'packaging\Uninstall-Driver.ps1') (Join-Path $Destination 'Driver')
+Copy-Item (Join-Path $repoRoot 'docs\DRIVER-SIGNING.md') (Join-Path $Destination 'Driver')
 Copy-Item (Join-Path $repoRoot 'packaging\Start-Cinema.ps1') $Destination
 foreach ($script in 'Set-SpatialProvider.ps1', 'Test-SpatialProvider.ps1', 'New-AsioLayout.py', 'Prepare-SpatialAudio.ps1', 'Diagnose-SpatialAudio.ps1', 'SpatialAudio.Runtime.psm1', 'Open-SpatialApp.ps1') {
     Copy-Item (Join-Path $repoRoot "tools\$script") $tools
